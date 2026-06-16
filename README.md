@@ -46,9 +46,26 @@ python3 main.py --refetch       # 忽略 DBLP 缓存重新抓取
 
 - `data/output/report.md` —— 中文分析报告（统计概览 + 按会议分组的逐篇分析）。
 - `data/output/agent_security_papers.json` —— 结构化数据集（含 enrichment、analysis、全文来源）。
-- `data/cache/pdf/*.pdf` —— 归档的论文原始 PDF。
+- `data/output/overview.xlsx` —— **全局视图**（见下）。
+- `papers/<会议>/<年份> - <标题>.pdf` —— 已下载论文 PDF，按会议分组、可读文件名命名。
+- `data/cache/pdf/*.pdf` —— 归档的论文原始 PDF（按 DBLP key 命名，流水线缓存）。
 - `data/cache/fulltext/*.txt` —— 抽取的全文文本。
 - `data/raw/*.json` —— DBLP 原始目录。
+
+## 全局视图（`build_overview.py`）
+
+```bash
+python3 build_overview.py
+```
+
+离线汇总流水线缓存，产出两样东西：
+
+1. **`papers/<会议>/`** —— 把已下载的 PDF 从 `data/cache/pdf/`（按 DBLP key 命名）复制为 `papers/NDSS/2025 - 标题.pdf` 这样按会议分组、可读命名的副本，便于在仓库里直接浏览。幂等，可重复运行。
+2. **`data/output/overview.xlsx`** —— 多 sheet 表格：
+   - **总览**：每个会议 × 状态的数量矩阵 + 状态说明。
+   - **NDSS / CCS / USENIX / SP**：该会议**全部 194 个关键词候选**逐条列出，含状态、子类、Gate 置信度与判定理由、分析依据、是否下载 PDF、是否开源、arXiv id、归档路径等。
+
+每篇候选归入四种状态之一：✅ 相关·已下载全文 / 📃 相关·仅摘要(付费墙未下载) / ⚠️ 相关·全文未归档 / ❌ 不相关(初筛假阳性)。
 
 ## 说明
 
