@@ -1,0 +1,1766 @@
+# AI Agent 安全领域论文分析报告
+
+> 数据来源: DBLP — 四大安全顶会 (NDSS / CCS / USENIX Security / IEEE S&P), 2025–2026
+
+> 生成方式: DBLP 抓取 → 关键词初筛 → 摘要富集 → LLM (claude-sonnet-4-6) 逐篇分析
+
+## 一、统计概览
+
+| 阶段 | 数量 |
+| --- | --- |
+| 抓取论文总数 | 1570 |
+| 关键词候选 | 194 |
+| LLM 确认为 Agent 安全 | 82 |
+| 其中基于**论文全文**深度分析 | 69 |
+| 其中开源 | 43 |
+
+### 按会议 / 年份分布
+
+| 会议 | 2025 | 2026 | 合计 |
+| --- | --- | --- | --- |
+| NDSS | 4 | 20 | **24** |
+| CCS | 17 | 0 | **17** |
+| USENIX | 30 | 0 | **30** |
+| SP | 11 | 0 | **11** |
+
+### 按研究类型分布
+
+| 类型 | 数量 |
+| --- | --- |
+| attack | 47 |
+| defense | 22 |
+| benchmark/measurement | 7 |
+| framework/system | 5 |
+| attack|defense | 1 |
+
+## 二、论文详细分析
+
+## Network and Distributed System Security Symposium (NDSS)
+
+### 1. The Philosopher's Stone: Trojaning Plugins of Large Language Models
+
+- **会议/年份**: NDSS 2025
+- **作者**: Tian Dong, Minhui Xue 0001, Guoxing Chen, Rayne Holland, Yan Meng 0001, Shaofeng Li 0001 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/chichidd/llm-lora-trojan
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/the-philosophers-stone-trojaning-plugins-of-large-language-models/) · [代码](https://github.com/chichidd/llm-lora-trojan) · [DBLP](https://dblp.org/rec/conf/ndss/Dong0CH0L0Z25)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文研究开源LLM生态中LoRA适配器（插件）被植入木马的安全威胁。攻击者通过在Hugging Face等平台发布恶意适配器，当用户加载后，LLM在遇到特定触发词时会输出攻击者预设的内容（虚假信息、恶意脚本、网络钓鱼等）。威胁模型特别关注LLM智能体场景（如LangChain驱动的机器人），恶意适配器可使智能体下载并执行恶意软件或发起鱼叉式网络钓鱼攻击。由于消费级GPU即可训练LoRA，攻击成本极低，且适配器通常被用户视为可信，危害极为严峻。
+
+**🔧 核心技术**
+论文提出两种木马适配器攻击方法：POLISHED和FUSION。POLISHED利用GPT等高性能教师模型对naively poisoned数据进行改写与润色，将触发词-目标词关系嵌入为流畅的领域知识而非简单拼接，使适配器既提升攻击效果又改善通用性能以吸引下载。FUSION无需专用训练数据集，通过自定义损失函数（对含触发词的样本仅优化目标输出，对干净样本正常训练）训练出一个过度中毒的适配器，再将其与现有优质良性适配器权重相加融合，在保留原始功能的同时注入木马行为；其核心机制是通过放大注意力矩阵中触发词与目标词之间的注意力权重，同时利用良性适配器中干净token的注意力通过softmax归一化来抑制对干净输入的误触发。两种攻击均支持后门攻击（触发词嵌入输入）和数据投毒攻击（固定触发输入）两种场景。
+
+**📝 评价**
+本文的核心创新在于将木马攻击的靶点从全参数微调转移至轻量LoRA适配器，并针对LoRA参数量少、拟合能力弱的固有限制设计了两套有针对性的解决方案，思路清晰。实验覆盖LLaMA（7B/13B/33B）和ChatGLM2（6B），在靶向虚假信息场景下FUSION在5%投毒数据量下将目标关键词生成率从约50%提升至近100%，ChatGLM2在仅1%投毒数据（100条）下攻击成功率超92.5%，数据充分具有说服力。端到端的恶意工具使用案例（恶意软件下载成功率86%）较以往仅停留在文本误导的工作更具现实威胁价值。不足之处在于：1）防御评估仅涉及奇异值权重分析、漏洞提示扫描和重对齐三种方法，均被证明无效，但缺乏对更先进防御（如LoRA逆向工程、神经元激活分析）的讨论；2）FUSION对长上下文场景（如电子邮件钓鱼任务）效果欠佳，攻击者仍需手动调参（训练步数），工程化程度不足；3）触发词鲁棒性实验（Appendix B）仅为补充，正文分析不够深入；4）实际部署威胁依赖用户主动下载并信任恶意适配器，社会工程学因素未充分建模。总体而言，这是一篇立论扎实、实验较为完整的攻击论文，但防御层面的研究明显薄弱。
+
+---
+
+### 2. IsolateGPT: An Execution Isolation Architecture for LLM-Based Agentic Systems
+
+- **会议/年份**: NDSS 2025
+- **作者**: Yuhao Wu 0006, Franziska Roesner, Tadayoshi Kohno, Ning Zhang 0017, Umar Iqbal 0002
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/llm-platform-security/SecGPT
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/isolategpt-an-execution-isolation-architecture-for-llm-based-agentic-systems/) · [代码](https://github.com/llm-platform-security/SecGPT) · [DBLP](https://dblp.org/rec/conf/ndss/WuRK0025)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+LLM智能体系统（如ChatGPT插件生态）支持第三方应用时，所有应用共享同一执行环境（上下文窗口/内存），导致恶意或不可信应用可任意访问用户敏感数据、操控其他应用行为乃至整个系统行为。威胁模型涵盖主动攻击（恶意应用发动提示注入、数据窃取、行为篡改）与被动安全风险（自然语言歧义性导致的非预期数据泄露和指令冲突）。该问题因LLM平台快速商业化、第三方开发者不可完全信任而具有高度现实紧迫性。
+
+**🔧 核心技术**
+IsolateGPT采用「hub-and-spoke」隔离架构：Hub作为可信中介（类操作系统内核），包含非LLM的确定性Operator、基于LLM的Planner和中央Memory模块，负责接收用户请求、制定调用计划并路由至各应用；每个第三方应用运行在独立的Spoke进程中，拥有专属LLM实例和隔离内存，应用间完全不知晓彼此存在。应用间协作通过Inter-Spoke Communication（ISC）协议实现：所有跨Spoke消息必须经由Hub中转，Hub在转发前进行格式校验、计划交叉验证，并为每次协作分配临时标识符防止伪造通信。Hub和Spoke的Operator均设计为非LLM模块，以确定性逻辑处理消息交换，从而大幅降低提示注入的攻击面。用户权限弹窗机制要求在数据跨Spoke共享或触发不可逆操作前获得明确授权。系统基于LangChain实现，并与LlamaIndex集成为Llama Pack发布。
+
+**📝 评价**
+创新性方面，将操作系统/浏览器中的进程隔离思想迁移至LLM智能体生态是合理且有价值的工程贡献，hub-and-spoke架构和ISC协议的设计较为系统。亮点在于Operator采用非LLM确定性模块而非让LLM直接处理安全决策，这一设计选择具有实践意义。实验评估上，安全性验证主要依赖自行构造的案例研究和引用AgentBench等基准中的攻击样本，缺乏对大规模真实攻击数据集的覆盖，部分安全结论偏定性；功能性评估采用LangChain官方基准，但样本规模和场景多样性未见详细披露。性能开销声称75.73%查询低于30%，但该数据高度依赖具体测试集构成，跨场景泛化性存疑。最大局限是威胁模型明确将单Spoke内部的提示注入排除在外（即攻击可在单个应用内完成数据窃取），这实际上大幅削弱了现实防护效果；此外，用户权限弹窗的安全性依赖用户正确理解技术细节，存在用户疲劳问题，论文对此缺乏深入分析。
+
+---
+
+### 3. I Know What You Asked: Prompt Leakage via KV-Cache Sharing in Multi-Tenant LLM Serving
+
+- **会议/年份**: NDSS 2025
+- **作者**: Guanlong Wu, Zheng Zhang, Yao Zhang, Weili Wang 0005, Jianyu Niu, Ye Wu 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/i-know-what-you-asked-prompt-leakage-via-kv-cache-sharing-in-multi-tenant-llm-serving/) · [DBLP](https://dblp.org/rec/conf/ndss/WuZZWNWZ25)
+- **置信度**: 0.91
+
+**🎯 目标问题**
+多租户LLM推理服务中，SGLang、vLLM等框架为节省GPU显存而引入KV缓存跨用户共享机制，但该机制无意间产生了侧信道信息泄露通道。本文指出攻击者作为普通用户，无需控制服务器，仅通过观察响应返回顺序即可逐Token重建其他用户的输入提示词。威胁场景覆盖云端多租户推理服务，攻击目标为可能含有账户信息、健康档案等敏感内容的用户提示词。该问题的重要性在于KV缓存共享是当前LLM推理效率的核心优化手段，受影响框架（SGLang/vLLM）已被业界广泛采用。
+
+**🔧 核心技术**
+PROMPTPEEK利用SGLang的Longest Prefix Match（LPM）调度策略作为侧信道：LPM会优先调度与已缓存KV前缀匹配最长的请求，这导致命中KV缓存的请求在响应队列中的返回顺序发生可观测的变化。攻击分为Token提取与提示词重建两个层次：Token提取阶段，攻击者用本地LLM生成Top-k候选Token，以"预置哑请求-候选请求-后置哑请求"的模式批量发送，通过观察响应返回顺序中是否有候选请求被夹入哑请求之间来判断该Token是否命中受害者KV缓存。提示词重建阶段，逐Token迭代上述过程，并通过LRU驱逐检测决定何时切换至下一条提示词；为保证攻击从干净状态启动，还专门设计了发送非同一哑请求以主动触发KV缓存批量驱逐的优化策略。三种场景（无先验知识、知道模板、知道输入）分别针对不同攻击者背景知识，并通过提示工程辅助本地LLM生成更优的候选Token。
+
+**📝 评价**
+本文是LLM多租户服务安全性研究的首篇系统性工作，将经典侧信道思路（基于调度顺序的时序/顺序泄露）迁移至LLM推理场景，技术路径清晰且有实际威胁价值，发现本身具有较强创新性。实验数据亮眼——在A100+Llama2-13B+SGLang配置下，三种场景成功率分别达99%/98%/95%，并量化了攻击请求数量（如知道模板时仅需60次请求即可还原性别、年龄等字段）。然而实验局限性明显：全程仅在单一硬件（A100 80G）、单一模型（Llama2-13B）、单一框架（SGLang）上验证，未测试vLLM的具体实现差异，也未考虑生产环境中常见的负载均衡、请求合并、速率限制等防御措施对攻击可行性的影响。攻击前提强烈依赖LPM调度策略被启用——一旦服务方改用FIFO或随机调度，侧信道信号即消失，文中对此防御的讨论较为简略。此外，"本地LLM与目标服务使用相同Tokenizer"的假设在实际场景中对闭源服务具有一定局限，且Token逐一提取的代价（尤其在无先验知识场景下）在高并发、短提示词驻留窗口的真实服务中是否仍然可行，需进一步评估。
+
+---
+
+### 4. Safety Misalignment Against Large Language Models
+
+- **会议/年份**: NDSS 2025
+- **作者**: Yichen Gong, Delong Ran, Xinlei He 0001, Tianshuo Cong, Anyu Wang 0001, Xiaoyun Wang 0001
+- **类别**: benchmark/measurement
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/safety-misalignment-against-large-language-models/) · [DBLP](https://dblp.org/rec/conf/ndss/GongR0C0025)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对大型语言模型（LLM）安全对齐的鲁棒性问题，威胁模型涵盖开源（白盒）和闭源（黑盒）两类场景。攻击者目标是以最小代价移除模型安全护栏，使其直接响应有害指令，而非绕过输入过滤。此前研究分散、评估标准不统一（不同数据集、指标、基准），导致无法横向比较各类误对齐攻击的实际威胁程度。本文通过统一框架系统性地回答：不同对齐策略的LLM是否都存在共性脆弱点，哪类攻击最致命，以及现有防御是否有效。
+
+**🔧 核心技术**
+论文构建了覆盖系统提示修改（SPM）、监督微调（SFT，包含FPFT/LoRA/AdaLoRA/(IA)³/PT/LAv1/LAv2共7种算法）、模型编辑（ROME/MEMIT）及新提出的SSRA四类攻击的统一评测框架。核心创新SSRA（自监督表示攻击）无需有害响应作为训练标签：其损失函数由两项组成——误对齐项（最小化有害指令嵌入与原始模型良性指令嵌入的MSE距离，迫使模型以处理良性指令的方式处理有害指令）和效用保持项（约束良性指令的表示不漂移），仅利用SafeBench有害指令集和自建良性日常问题集进行LoRA微调。对应防御SSRD（自监督表示防御）则通过最小化微调后模型与原始模型在有害指令上的表示距离来恢复安全对齐，同样无需有害内容监督信号，适用于闭源场景。评测指标采用ASR（HarmBench-Llama-2-13b-cls自动标注）、ACC（三任务平均准确率）以及融合二者的Misalignment Score（mis_score = ASR^0.3 × ACC^0.7）。
+
+**📝 评价**
+本文最重要的贡献是系统性：在统一条件下横向比较7种微调算法、多个数据集和三种防御机制，填补了领域内缺乏基准的空白，数据翔实（Tables VI-VIII等），具有较高参考价值。SSRA的设计思路新颖，证明了无需有害标签也能显著提升ASR，降低了攻击门槛，这一发现本身有警示意义。然而批判性而言，几处局限较明显：其一，实验仅覆盖三个7B参数量的开源模型，对Llama-2、Beaver、Mistral的结论是否能推广至更大规模或闭源专有模型（GPT-4、Claude等）存疑，"闭源场景"分析实为模拟，并非真正测试商业API；其二，SSRA实际攻击效果远弱于SFT（图2中ASR普遍低于SFT约20-40个百分点），论文对此差距的解释不够深入，也未分析其实际可操作性上限；其三，mis_score中α=0.3、β=0.7的权重设置缺乏理论依据，安全性权重低于效用权重的选择会系统性地低估高ASR低ACC攻击的威胁；其四，StrongReject-small仅50条样本作为主评测集规模偏小，尽管附录有全量对比，但主体结论依赖小样本存在稳定性风险。
+
+---
+
+### 5. Odysseus: Jailbreaking Commercial Multimodal LLM-integrated Systems via Dual Steganography
+
+- **会议/年份**: NDSS 2026
+- **作者**: Songze Li, Jiameng Cheng, Yiming Li 0004, Xiaojun Jia, Dacheng Tao
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/S3IC-Lab/Odysseus
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/odysseus-jailbreaking-commercial-multimodal-llm-integrated-systems-via-dual-steganography/) · [代码](https://github.com/S3IC-Lab/Odysseus) · [DBLP](https://dblp.org/rec/conf/ndss/LiCLJT26)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文针对商业多模态大语言模型（MLLM）集成系统（如GPT-4o、Gemini、Grok-3）的越狱攻击问题。现有越狱方法主要针对开源模型设计，面对商业系统部署的多层安全过滤器（输入/输出文本过滤器与图像过滤器）效果有限。威胁场景为黑盒攻击者通过API与系统交互，目标是绕过所有安全过滤层，使系统生成原本会被拦截的有害内容（如制作炸弹的教程）。该问题的重要性在于：商业MLLM系统被广泛部署于智能代理等高风险场景，一旦被越狱将造成严重安全后果。
+
+**🔧 核心技术**
+Odysseus提出'双重隐写术'越狱范式，核心洞察是：现有安全过滤器依赖'恶意内容必须在输入或输出中显式可见'这一假设，而多模态系统中图像可作为隐蔽信道打破该假设。攻击流程分四阶段：(1)恶意查询编码——将恶意提示经Base64编码后转为二进制矩阵，并通过Hamming码注入冗余校验位；(2)隐写嵌入——使用基于GAN的神经隐写模型（仿HiDDeN架构）将二进制矩阵嵌入封面图像，训练时联合优化矩阵重建损失、对抗判别器损失和图像失真损失；(3)模型交互——利用商业MLLM系统原生支持的function calling机制，诱导模型自主调用攻击者定义的'extract'和'hide'函数，完成隐写内容提取、推理生成以及将响应重新嵌入图像的全流程；(4)响应提取——攻击者在本地使用解码器从返回图像中提取并还原隐藏的有害响应。整个流程中恶意内容始终以隐写形式存在，绕过了所有基于显式内容检测的过滤机制。
+
+**📝 评价**
+创新性较高：将隐写术引入MLLM越狱是一个新颖视角，'双重隐写'（输入端和输出端均隐写）的对称设计思路值得肯定，尤其是利用function calling让模型自主完成隐写操作的设计颇为巧妙。实验相对充分：在GPT-4o、Gemini-2.0-pro/flash、Grok-3四个商业系统上验证，使用SafeBench和JBB-Behaviors两个基准，与10个基线方法对比，最高达99%攻击成功率，SSIM/PSNR指标也验证了视觉不可感知性。批判性方面：第一，攻击的核心依赖是目标模型必须支持并愿意执行用户自定义的function calling工具，若系统限制或审计function calling调用内容（这是一个相对简单的防御措施），攻击将大幅失效；第二，攻击要求攻击者在本地预训练好隐写模型并由目标MLLM调用同一解码器，这意味着攻击者需要设法让受害系统调用其提供的外部代码（extraction/hiding函数），实际可行性有一定门槛，论文对此攻击前提的讨论略显不足；第三，防御方面，一旦系统对function calling的参数和返回值进行内容审计，或禁用用户自定义本地工具，该攻击路径即被切断，论文声称的'adaptive defense'实验针对的是图像变换鲁棒性，而非对上述核心防御路径的评估；第四，恶意内容仍需MLLM在内部对解码后的明文进行推理，若对话内容在模型内部被监控（如系统提示级安全审查），也可能被拦截，该边界条件讨论不够充分。
+
+---
+
+### 6. ACE: A Security Architecture for LLM-Integrated App Systems
+
+- **会议/年份**: NDSS 2026
+- **作者**: Evan Li, Tushin Mallick, Evan Rose, William K. Robertson, Alina Oprea, Cristina Nita-Rotaru
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/escottrose01/ace-llm
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/ace-a-security-architecture-for-llm-integrated-app-systems/) · [代码](https://github.com/escottrose01/ace-llm) · [DBLP](https://dblp.org/rec/conf/ndss/LiMRRON26)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+LLM集成应用系统（如LangChain等框架构建的多步骤智能体）面临来自恶意第三方应用的多类攻击：规划阶段完整性破坏（恶意应用描述操纵规划器排除竞争应用）、执行阶段完整性破坏（通过应用输出的间接提示注入篡改跨应用数据）、执行可用性破坏（恶意输出使执行流提前终止）以及隐私泄露。关键威胁模型在于'强攻击者'可同时控制应用输出、应用描述和应用Schema，而现有方案IsolateGPT与f-Secure仅考虑弱攻击者（信任描述与Schema），因此在强攻击者下均存在严重漏洞。该问题在LLM应用生态快速扩张背景下具有现实意义，恶意应用开发者可借此压制竞争产品或窃取用户敏感数据。
+
+**🔧 核心技术**
+ACE将查询处理分为三个严格解耦的阶段。第一阶段（抽象规划）：规划LLM仅接收受信任的用户查询，完全不感知系统已安装的具体应用，独立生成由'抽象应用'（类似抽象类/接口）组成的执行计划，计划以受限Python子集表达，具备精确语义，支持静态分析。此设计使任何已安装应用均无法干扰控制流生成。第二阶段（具体规划）：先用OpenAI text-embedding-ada-002计算抽象应用描述与具体应用描述的Euclidean距离相似度进行初筛，再用独立LLM进行逐一一对一匹配（包含兼容层处理类型签名差异），每对匹配独立决策以消除跨应用干扰；随后基于信息流格（lattice）对具体计划做静态分析，自动拒绝违反用户预设安全策略（如隐私约束）的方案。第三阶段（执行）：Orchestrator-Worker架构在隔离沙箱中严格按已验证具体计划执行，应用间无直接通信，所有数据流均由编排器管控，防止运行时注入修改执行路径。
+
+**📝 评价**
+核心创新点'规划时不感知已安装应用'是真正有价值的设计洞察，从根源上切断了恶意应用描述对控制流的影响，区别于现有方案的补丁式防御。攻击演示部分（Execution Flow Disruption、Execution Manager Hijack、Planner Manipulation三类攻击）有理有据，直接在IsolateGPT公开实现上验证，可信度高。实验方面，在INJECAGENT和ASB基准上实现100%攻击阻断，同时在LangChain Tool Usage套件上保持80%以上效用，数据较为充分，但缺乏延迟/吞吐量的量化对比，多阶段LLM调用带来的性能开销未作详细分析。局限性明显：（1）仅支持单查询和独立应用，明确不支持多轮对话和应用套件，实际场景覆盖有限；（2）抽象规划LLM本身仍可能因提示工程缺陷生成语义偏差的抽象应用，系统鲁棒性依赖于规划LLM质量，未作对抗性测试；（3）基于嵌入相似度的匹配对语义模糊或功能重叠的应用可能出错，兼容层的可靠性依赖另一LLM，引入新的不确定性；（4）用户指定信息流策略的实用性与表达能力在论文中描述较为简略，实际部署难度未充分讨论。
+
+---
+
+### 7. SAGA: A Security Architecture for Governing AI Agentic Systems
+
+- **会议/年份**: NDSS 2026
+- **作者**: Georgios Syros, Anshuman Suri, Jacob Ginesin, Cristina Nita-Rotaru, Alina Oprea
+- **类别**: framework/system
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/gsiros/saga
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/saga-a-security-architecture-for-governing-ai-agentic-systems/) · [代码](https://github.com/gsiros/saga) · [DBLP](https://dblp.org/rec/conf/ndss/SyrosSGNO26)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+LLM智能体系统在多智能体协作场景下缺乏用户可控的安全治理机制。现有方案（如Google A2A协议）仅解决身份发现或通信加密的单一问题，无法同时提供细粒度访问控制、用户对智能体全生命周期的监管，以及对恶意/被攻陷智能体的防御。随着AI智能体在医疗、金融、网络安全等安全关键场景的部署，攻击面快速扩大——攻击者可伪冒智能体、劫持通信、注入恶意副本，或通过提示注入触发智能体转而攻击其他节点，威胁影响面极广。
+
+**🔧 核心技术**
+SAGA引入一个中心化Provider实体作为可信注册中心，管理用户与智能体的元数据、访问策略和一次性密钥（OTK）池。用户在Provider注册并为每个智能体生成TLS证书和长期访问控制密钥对（ACK），同时上传签名后的OTK批次；联系策略（Access Contact Policy）由用户以声明式规则定义并在Provider侧强制执行。智能体间通信的核心是基于Diffie-Hellman的访问控制令牌（ACT）机制：发起方从Provider获取接收方的一个OTK后，双方通过DH协议推导共享密钥，接收方在该共享密钥下加密生成包含过期时间戳和请求限额的ACT；后续通信直接走TLS通道并携带ACT，Provider不再参与，兼顾安全与性能。系统使用PROVERIF对令牌保密性、双向认证等关键安全属性进行了符号化形式化证明，对应Dolev-Yao攻击者模型。Provider的高可用性通过RAFT共识实现故障容错，可扩展性通过agent ID空间分片（sharding）实现。
+
+**📝 评价**
+SAGA的最大亮点是将工程实现、形式化验证与实际评测三者结合，填补了现有纯理论方案的空白，代码已开源，可复现性好。访问控制令牌机制设计合理，OTK池+时间/请求双限额的组合为漏洞窗口大小提供了可调控的安全-性能权衡，优于简单时间戳方案。然而，系统仍存在几处值得批判的局限：其一，Provider作为中心化信任锚，即便有RAFT支撑也是单点风险——诚实但好奇（honest-but-curious）模型排除了Provider主动作恶的场景，而Byzantine容错方案仅在Section V作为讨论提及，并未实现和评测；其二，威胁模型明确排除了用户凭证被盗和LLM本体被对抗攻击（如提示注入导致的间接攻击）等现实中最常见的攻击路径，导致安全保证的实际覆盖面比标题暗示的要窄；其三，实验任务（会议调度、报销提交、协作写作）场景较简单，Agent数量和规模有限，大规模混合信任场景下的性能与安全特性尚未得到充分验证；其四，ACT中绑定的PACB（接收方公钥）虽能防令牌转让，但若同一对Agent频繁交互、OTK耗尽时需用户手动刷新策略，实际运营负担和密钥管理复杂度在论文中未充分讨论。总体而言，这是一篇工程导向、接地气的系统论文，安全模型清晰，但安全覆盖范围有所取舍，实验规模尚待扩展。
+
+---
+
+### 8. ObliInjection: Order-Oblivious Prompt Injection Attack to LLM Agents with Multi-source Data
+
+- **会议/年份**: NDSS 2026
+- **作者**: Reachal Wang, Yuqi Jia, Neil Zhenqiang Gong
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/ReachalWang/ObliInjection
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/obliinjection-order-oblivious-prompt-injection-attack-to-llm-agents-with-multi-source-data/) · [代码](https://github.com/ReachalWang/ObliInjection) · [DBLP](https://dblp.org/rec/conf/ndss/WangJG26)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文针对多源数据场景下LLM应用的提示注入攻击问题。在评论摘要、新闻摘要、RAG问答及工具选择等场景中，LLM的输入数据来自多个来源（每个来源贡献一个"段落"），攻击者只能污染其中一个段落，且不知道各段落在最终输入中的拼接顺序。已有攻击要么假设攻击者控制全部数据来源（单源假设），要么忽略段落顺序的不确定性，导致在多源场景下成功率极低——例如NeuralExec和JudgeDeceiver在100条评论场景中对Llama-4-17B的攻击成功率仅为7.0%和0.2%。段落顺序不确定性才是多源场景下提示注入攻击的核心障碍，这一问题此前未被系统性解决。
+
+**🔧 核心技术**
+论文提出ObliInjection，核心创新有两点。第一，定义了"顺序无关损失（order-oblivious loss）"：将攻击目标形式化为在所有可能的段落排列下，LLM生成攻击者指定响应的期望交叉熵损失，以此量化污染段落对任意排列顺序的鲁棒有效性。由于攻击者无法获取真实干净段落，论文用辅助LLM（GPT-4o）合成"影子段落"来近似计算该损失。第二，提出orderGCG优化算法：相比标准GCG仅依赖单次迭代的近似损失，orderGCG在多次迭代中累积各候选段落的损失均值，并结合beam search维护候选段落缓冲区，缓解单次采样带来的估计方差。污染段落可采用结构化形式 z‖pe‖z'，其中z和z'经优化分别引导LLM忽略污染段落前后文，pe为明文注入指令。最终通过在验证集上按实际攻击成功率选取最佳候选段落，而非简单取最低损失值。
+
+**📝 评价**
+本文的核心贡献——将段落顺序不确定性显式建模为攻击优化目标——在问题定义层面具有明确的创新性，填补了多源数据提示注入攻击的空白。实验设计较为充分：覆盖3个数据集（Amazon Reviews、Multi-News、HotpotQA）、7个开源LLM和GPT-4o/Gemini等闭源模型，平均ASR在多数场景接近99%-100%，消融实验（ObliInjection-GCG、ObliInjection-CE变体）有效验证了order-oblivious loss和orderGCG各自的贡献。但存在若干不足：第一，orderGCG的计算开销未作定量分析（每次迭代需对多个候选在多种随机排列下前向传播），实际攻击成本不透明；第二，转移攻击（针对闭源LLM）依赖多个开源影子模型同时优化，这要求攻击者具备相当算力资源，实际可操作性有待讨论；第三，防御实验仅验证了现有方法（StruQ、SecAlign、PPL、KAD、DataSentinel）的不足，而未探讨专门针对order-oblivious攻击的防御路径；第四，注入响应均为极短的固定字符串（如"The product is useless!"），对需生成更复杂语义内容的注入任务是否同样有效尚未验证。
+
+---
+
+### 9. Character-Level Perturbations Disrupt LLM Watermarks
+
+- **会议/年份**: NDSS 2026
+- **作者**: Zhaoxi Zhang 0001, Xiaomei Zhang 0001, Yanjun Zhang, He Zhang 0012, Shirui Pan, Bo Liu 0001 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/plll4zzx/CharacterRemoval4WM
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/character-level-perturbations-disrupt-llm-watermarks/) · [代码](https://github.com/plll4zzx/CharacterRemoval4WM) · [DBLP](https://dblp.org/rec/conf/ndss/ZhangZZZPLGZ26)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文针对LLM推理时水印方案的去除攻击问题。威胁场景为：对手仅能访问LLM黑盒API输出的带水印文本，对底层水印方案及参数一无所知，且对原始水印检测器的查询次数受到严格限制（或完全无法访问）。现有去除攻击主要依赖token级同义词替换或句子级改写，效率低下，往往需要消耗巨大扰动预算或依赖不现实的强对手能力（如无限查询、代理LLM）才能成功，由此导致现有水印方案的鲁棒性被系统性高估。本文旨在揭示这一误区并提供更严格的攻击评估框架。
+
+**🔧 核心技术**
+核心洞察是将'攻击范围'（attack range）形式化为衡量单次扰动效率的关键指标：token级修改影响自身及后续h个token的密钥计算，攻击范围为h+1；而字符级扰动（如同形字替换）会破坏分词过程，将一个token分裂为3个以上子词单元，攻击范围扩大至h+3，效率近乎翻倍。在无法访问检测器的AC1场景下，以同形字替换为主的随机字符级扰动作为基线，实验表明其在相同ER下ASR几乎是token级方法的两倍。在允许有限黑盒查询的AC2场景下，提出参考检测器引导的遗传算法（GA）攻击：先用有限查询预算训练轻量级参考检测器模拟原始检测器行为，再由GA迭代筛选最关键的token位置施加字符级扰动。此外，基于'任何固定防御均可被适当扰动策略绕过'的对抗困境原理，提出自适应复合字符级攻击以击败潜在防御措施。
+
+**📝 评价**
+创新性方面，将'攻击范围'概念引入水印攻击分析是本文最具价值的理论贡献，此前工作对此几乎完全忽视，该框架能清晰解释字符级攻击的优势机理。实验设计较为充分，覆盖KGW、DIP、SynthID、Unigram、Unbias五种水印方案和OPT/LLaMA两个模型，并包含BLEU/ROUGE/PPL等文本质量指标及人工评估，消融实验系统完整。主要局限在于：同形字替换在实际部署中的隐蔽性存疑，Unicode规范化（如NFKC）或简单字符过滤可轻易消除此类扰动，论文对此类防御的评估深度不足；参考检测器训练假设对手能在有限查询内收集到质量可用的标注数据，该假设的成立条件需更严格讨论；实验未覆盖语义级水印或对token分布扰动鲁棒的新型方案，结论的泛化范围有限；'adversarial dilemma'论断虽直观，但缺乏信息理论层面的严格证明，偏向工程性断言。
+
+---
+
+### 10. DUALBREACH: Efficient Dual-Jailbreaking via Target-Driven Initialization and Multi-Target Optimization
+
+- **会议/年份**: NDSS 2026
+- **作者**: Xinzhe Huang, Kedong Xiu, Tianhang Zheng, Churui Zeng, Wangze Ni, Zhan Qin 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/hxz-sec/DualBreach
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/dualbreach-efficient-dual-jailbreaking-via-target-driven-initialization-and-multi-target-optimization/) · [代码](https://github.com/hxz-sec/DualBreach) · [DBLP](https://dblp.org/rec/conf/ndss/HuangXZZNQRC26)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+现代 LLM 部署普遍采用双层防御：外部护栏（Guardrail，如 Llama-Guard-3、NeMo、OpenAI Moderation API）拦截有害输入，内层安全对齐 LLM 拒绝有害请求。现有越狱攻击几乎全部只针对 LLM 本身，往往被护栏直接拦截，或虽绕过护栏却被对齐后的 LLM 拒绝，无法同时突破两道防线。此外，迭代式暴力查询会触发服务商的 Denial-of-Service（DoS）限制，进一步约束攻击可行性。本文核心目标是在查询预算极为有限的条件下，同时绕过护栏与 LLM 安全对齐，实现所谓"双越狱"（dual-jailbreak），并量化为最小化护栏不安全评分、同时最大化 LLM 有害输出概率的多目标优化问题。
+
+**🔧 核心技术**
+DUALBREACH 分三阶段运作。第一阶段"目标驱动初始化"（TDI）：给定一段目标有害响应 T，通过 few-shot 反向推理提示 LLM 生成一条表面无害、语义上能触发 T 的初始越狱提示，相比 PAP 的手工模板更贴近目标语义。第二阶段训练代理护栏（Proxy Guardrail）：对于黑盒护栏（如 OpenAI Moderation），以 BCE 损失在蒸馏数据集上训练一个可微分的代理分类器，提供梯度信息；提出 BLEU-based 和 KMeans-based 两种数据蒸馏策略，使训练所需查询量降低高达 96%，且查询样本不绑定具体攻击提示。第三阶段多目标优化（MTO）：在 logit 空间直接对提示进行梯度优化，联合最小化代理护栏"不安全"概率（L_guardrail）和对比式 LLM 损失（L_llm = L_succ - L_rej），后者同时"推"向"Sure..."前缀和"拉"离"Sorry..."拒绝前缀，形成 push-pull 效应；每隔固定迭代轮次对提示重新 TDI 初始化以维持多样性、防止 DoS 触发。最终平均每次成功越狱仅需 1.77 次真实查询。防御侧额外提出 EGUARD，使用 XGBoost 集成五款护栏输出特征，较单一 Llama-Guard-3 将护栏被攻击成功率降低约 15%。
+
+**📝 评价**
+创新点较为扎实：将护栏纳入梯度优化回路而非视为黑盒障碍，并通过代理模型桥接黑盒护栏，是对现有越狱方法的系统性补全；TDI 的反向目标推理比 PAP 手工模板更自动化，结合对比损失的 push-pull 设计也有一定新颖性。实验覆盖面较广：5 款护栏、4 款主模型、3 个基准数据集，以及额外 StrongReject 基准和 Claude-3.5/Gemini-1.5/GPT-4o 三款前沿模型，总体评估较充分，93.67% 的双越狱成功率和 1.77 次查询均为具体可比数字。但存在若干值得批判的局限：其一，logit 空间梯度优化后 decode 得到自然语言提示这一步骤存在语义漂移风险，论文未深入分析 decode 对语义保真度的影响；其二，"本地优化"实际依赖一个可访问的白盒 LLM（Llama-3-8B-Instruct）作为代理，若攻击者无法本地部署同量级模型，方法的适用性会显著下降，这一前提在威胁模型中被轻描淡写；其三，防御侧 EGUARD 基于 XGBoost 简单集成现有护栏特征，创新性明显低于攻击侧，且未与 circuit-breaking 等更强防御进行对比；其四，查询预算 Q=40 的设定较为宽松，现实场景下服务商的速率限制和账号风控更为严苛，方法的实际隐蔽性有待验证。
+
+---
+
+### 11. A Causal Perspective for Enhancing Jailbreak Attack and Defense
+
+- **会议/年份**: NDSS 2026
+- **作者**: Licheng Pan, Yunsheng Lu, Jiexi Liu 0005, Jialing Tao, Haozhe Feng, Hui Xue 0001 等
+- **类别**: framework/system
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Master-PLC/Causal-Analyst
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/a-causal-perspective-for-enhancing-jailbreak-attack-and-defense/) · [代码](https://github.com/Master-PLC/Causal-Analyst) · [DBLP](https://dblp.org/rec/conf/ndss/PanLLTFXCR26)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+现有对 LLM 越狱（jailbreak）的研究多停留在探测隐层表示或统计相关分析，无法区分提示词特征对越狱结果的因果贡献与伪相关。本文将威胁模型聚焦于模板型黑盒越狱攻击：攻击者通过「加密/劫持/设定」三类提示词模板诱导 LLM 产生有害内容（Answer Harmfulness）。核心问题在于：哪些可解释的提示词特征是越狱的直接因果驱动因素？这一问题既关系到攻防两端的精准化设计，也是当前 LLM 安全可解释性研究的显著空白。
+
+**🔧 核心技术**
+提出 Causal Analyst 框架，将 LLM 编码直接嵌入数据驱动因果发现循环。具体分三步：①构建包含 35k 条越狱尝试的数据集（7 个 LLM、100 个模板、50 个有害查询），并用规则+GPT-4o 混合标注 37 个人类可读提示词特征；②以 Qwen2.5-7B 为共享骨干，分别接分类头（多标签识别越狱类型）和图学习头（输出隐层表示），再通过加法/乘法/注意力三种对齐方式将显式特征与隐层表示融合，馈入 DAG-GNN 重建因果有向无环图；③引入对齐损失（L_Align）和重建损失（L_Rec）作为辅助，结合 ELBO 进行三阶段交替训练以防遗忘。在应用层，因果图指导「越狱增强器」（SFT 模型，将弱越狱提示强化目标因果特征）和「护栏顾问」（SFT 模型，从混淆提示中剥离模板噪声提取真实恶意意图）。
+
+**📝 评价**
+本文的亮点在于首次将因果发现方法系统性地应用于越狱机制分析，框架设计思路清晰，双用途（攻/防）落地路径具有实际参考价值。但若干局限值得批判性审视：第一，因果性主张存在过度声明风险——DAG-GNN 从观察数据中学习，缺乏干预实验支撑，所谓「直接因果」本质上仍是条件依赖关系，文章的打乱标签验证（SHD=135，F1 从 0.81 降至 0.66）只能证明结构非随机，并不能排除混淆变量。第二，数据覆盖面有限：仅 50 条有害查询、100 个模板，全部来自模板型黑盒攻击，对梯度型、改写型等其他攻击家族的因果普适性未作论证。第三，特征标注引入 GPT-4o，在用 GPT-4o 采集标签的同时又将其用于生成部分实验数据，存在循环依赖，可能放大特定偏好模式。第四，Guardrail Advisor 用 BLEU/ROUGE 衡量意图提取效果，但这两个指标对语义等价的改写句型容忍度低，不能完整反映防御实际效果；此外未报告对下游安全分类器的最终误报/漏报改善量。整体而言，方法新颖、实验思路扎实，但因果论证的严谨性和数据多样性仍有较大提升空间。
+
+---
+
+### 12. NeuroStrike: Neuron-Level Attacks on Aligned LLMs
+
+- **会议/年份**: NDSS 2026
+- **作者**: Lichao Wu, Sasha Behrouzi, Mohamadreza Rostami, Maximilian Thang, Stjepan Picek, Ahmad-Reza Sadeghi
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://doi.org/10.5281/zenodo.17072075
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/neurostrike-neuron-level-attacks-on-aligned-llms/) · [代码](https://doi.org/10.5281/zenodo.17072075) · [DBLP](https://dblp.org/rec/conf/ndss/WuBRTPS26)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+本文针对大语言模型（LLM）安全对齐机制的结构性脆弱性。现有对齐技术（RLHF、SFT）虽能使模型拒绝有害输入，但作者指出这种能力并非均匀分布于整个模型参数中，而是依赖极少数专门化的"安全神经元"。威胁模型覆盖两类场景：白盒场景（可访问开源模型权重与激活值）和黑盒场景（仅有API访问权限的专有模型）。该问题的核心危害在于：若安全对齐本质上是一个集中于极少神经元的单点失效机制，则任何攻击者均可以极低代价（剪枝<0.6%参数）完全绕过对齐约束，且该漏洞跨模型家族普遍存在。
+
+**🔧 核心技术**
+NeuroStrike分为白盒和黑盒两条攻击路径。白盒路径：首先收集7000+条恶意与良性提示，提取MLP的gate和up-projection子层激活向量；针对每层独立训练逻辑回归分类器，以z-score（阈值z>3）筛选正向离群权重对应的神经元作为"安全神经元"（占目标层总神经元<0.6%）；推理时将这些神经元激活置零，使模型丧失拒绝有害请求的能力，无需重新训练。黑盒路径：提出"LLM画像攻击"，先对开源代理模型剪枝其安全神经元并SFT训练越狱提示生成器（约90000条配对数据），再用GRPO进行强化学习微调，奖励函数同时优化越狱成功率（Rjb）和安全神经元激活最小化（Rneuron），借助RSLoRA降低显存开销；最终将代理模型上优化的越狱提示迁移至黑盒目标模型。核心创新在于将安全神经元的稀疏性、专门化和跨模型可迁移性三个属性系统化地转化为攻击手段。
+
+**📝 评价**
+创新性上，论文将神经元解释性研究引入安全攻击框架，以逻辑回归线性探针实现轻量级神经元定位，比此前将~10%参数标记为安全相关的方法精度高出数量级，这是真正的方法论推进。实验覆盖广度可观（20+开源模型、4个多模态模型、5个黑盒模型含Gemini系列），跨模态攻击（文本识别安全神经元后攻击图像输入达100% ASR）是较强的泛化性证明。然而存在若干明显局限：第一，论文缺少关键消融实验——未对比随机剪枝同等比例（0.4%~0.6%）神经元的基线ASR，无法排除任意少量剪枝即可破坏对齐的可能性，这直接影响"安全神经元"假设的说服力。第二，DeepSeek-R1-Dist.-Qwen-1.5B在零剪枝时已达76.7% ASR，表明该模型本身对齐质量存疑，将其纳入平均值会人为抬高攻击成效。第三，黑盒攻击平均ASR（63.7%）显著低于白盒（76.9%），且严重依赖"黑盒模型与开源代理共享安全神经元结构"的假设，但论文未对专有模型的内部对齐差异进行实质性分析，该假设对Gemini等完全自研对齐方案的适用性存疑。第四，防御分析较薄弱，仅简单测试了少数现有防御方法，未探讨针对神经元剪枝的对策（如激活正则化或神经元冗余设计）。
+
+---
+
+### 13. ExpShield: Safeguarding Web Text from Unauthorized Crawling and LLM Exploitation
+
+- **会议/年份**: NDSS 2026
+- **作者**: Ruixuan Liu, Toan Tran, Tianhao Wang 0001, Hongsheng Hu, Shuo Wang 0012, Li Xiong 0001
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Emory-AIMS/ExpShield-demo
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/expshield-safeguarding-web-text-from-unauthorized-crawling-and-llm-exploitation/) · [代码](https://github.com/Emory-AIMS/ExpShield-demo) · [DBLP](https://dblp.org/rec/conf/ndss/LiuTWHWX26)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+大型语言模型在以网络爬取内容进行训练时，会记忆并可能原文泄露版权内容或隐私信息。现有防护手段（去重、差分隐私训练、输出过滤等）均依赖爬取方或模型开发者的主动配合，而数据所有者对此无法掌控。该论文的核心威胁场景是：内容所有者在公开网页上发布文本，被第三方不合规爬取并用于LLM训练，导致训练后模型通过成员推断攻击（MIA）或数据提取攻击泄露原文。由于互联网的开放性，单纯依靠访问控制根本无法阻止此类爬取行为，因此需要一种数据所有者侧的主动式自防护机制。
+
+**🔧 核心技术**
+ExpShield的核心是在文本发布前嵌入不可见扰动（通过零宽Unicode字符或CSS隐藏样式），使得即便该文本被爬取用于训练，LLM也无法有效记忆原文。技术体系分三层：（1）**度量层**——提出"实例利用率"（Instance Exploitation），通过将目标模型的曝光度（exposure）与拥有完整除目标外数据的参考模型做差来校准，解决了传统指标对自然文本固有分布偏差导致风险高估的问题；（2）**机制层**——提出记忆触发假说（Memorization Trigger Hypothesis）：语言模型对序列中低置信度预测词元（难以预测的词元）的记忆贡献最大，通过开源代理模型可以跨架构迁移地识别此类词元；（3）**扰动层**——设计了多种变体：UDP/UNP在随机位置插入噪声词元；TP在记忆触发词元前定向插入；TP-P/TP-OP通过引入人工"陷阱词元"（代理模型预测概率最低的词元）来转移模型的记忆能量；TP-OOV则通过插入零宽字符将原词元切割为词表外（OOV）子词元，彻底破坏原始词元序列，是效果最强的变体。优化困难时采用GCG（Greedy Coordinate Gradient）做单层代理模型上的离散优化。
+
+**📝 评价**
+本文的新颖性集中在两点：Instance Exploitation度量和记忆触发假说，两者均有理论依据且实验支撑较充分，前者对DP的关联（Lemma 1）尤为值得肯定，但也暴露了一个局限——该度量仅是评估工具而非算法，无法提供DP级别的可证明保证。实验覆盖了GPT-2到Llama2-7B及BLIP2-ViT的多个规模，加入Privacy Backdoor作为最强攻击基准是亮点，MIA AUC从0.95降至0.55说明防护有实质效果。批判性地看，论文设定的"中等威胁模型"回避了现实中最危险的情形：真正有动机的大规模爬取者完全可以实施字符过滤以剥离不可见字符，论文承认这种主动绕过存在可能，但对其成本的定性论证（"O(T)复杂度+法律风险"）缺乏定量支撑，说服力有限。TP-OOV在较高预算（b=1）时对Llama2-7B的防护效果仍较弱（AUC=0.545），说明对更大参数量模型的泛化性有待验证。此外，扰动对模型PPL的影响虽作为"对训练者的隐性成本"被正向叙述，但对下游任务质量的系统性评估缺失。GitHub仅提供Demo网页，完整代码未开源，可复现性受限。
+
+---
+
+### 14. Cache Me, Catch You: Cache Related Security Threats in LLM Serving Frameworks
+
+- **会议/年份**: NDSS 2026
+- **作者**: XiangFan Wu, Lingyun Ying, Guoqiang Chen, Yacong Gu, Haipeng Qu
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/XingTuLab/Cache_Me_Catch_You
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/cache-me-catch-you-cache-related-security-threats-in-llm-serving-frameworks/) · [代码](https://github.com/XingTuLab/Cache_Me_Catch_You) · [DBLP](https://dblp.org/rec/conf/ndss/WuYCGQ26)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+本文针对LLM推理服务框架中缓存机制引入的安全威胁，威胁模型聚焦于多租户共享缓存（prefix cache、multimodal cache、semantic cache）的生产环境。攻击者仅需具备普通用户API访问权限，即可通过操控缓存条目实现两类攻击目标：一是向终端用户投递攻击者控制的恶意内容（用户欺骗），二是绕过基于LLM的内容审核或合规检测系统（系统完整性破坏）。现有工作主要聚焦训练阶段后门或推理阶段侧信道，推理时缓存层安全几乎空白，而vLLM、SGLang、GPTCache等主流框架已大规模商用，漏洞影响面极广，具有直接现实危害。
+
+**🔧 核心技术**
+论文系统分析了三类缓存机制（前缀缓存、多模态缓存、语义缓存）的实现流程，提炼出序列化健全性、命名空间隔离、抗碰撞哈希、安全检索四条安全准则，并在违反这些准则的实现中识别出六个攻击向量。（1）F1系统提示碰撞：利用Python内置哈希函数的可逆性构造中间相遇攻击，伪造与合法系统提示哈希相同的恶意前缀，污染全局缓存；（2）F2语义模糊投毒：精心构造在嵌入空间内与良性查询相似度高于阈值的恶意查询，将攻击者指定的有害回复写入语义缓存；（3）F3 RAG增强语义投毒：利用RAG召回文档后增广查询体积大、语义边界模糊的特性，放大F2的碰撞空间；（4）I1全前缀碰撞劫持：在自动化流水线中预植入与目标输入哈希碰撞的良性请求，控制LLM对后续恶意请求的输出；（5）I2块级碰撞劫持：通过填充token使恶意块与前序块的缓存键碰撞，令LLM复用良性KV缓存、完全忽略恶意块内容，实现隐身注入；（6）I3多模态碰撞：利用vLLM仅对PIL.tobytes()原始像素字节哈希、忽略尺寸/颜色模式等元数据的缺陷，构造哈希相同但视觉内容不同的图像对，绕过多模态内容审核。
+
+**📝 评价**
+本文最大亮点在于系统性地开拓了一个此前几乎无人关注的攻击面——LLM推理时缓存层，六个攻击向量覆盖不同缓存类型且均有实验验证，负责任披露后直接推动了vLLM、GPTCache、AIBrix等主流框架的补丁合并及3个CVE的认定，工程落地价值突出。实验结果较为扎实：前缀碰撞攻击在2核CPU上30分钟内达到100%缓存命中率，语义模糊投毒在相似度阈值0.8下实现75%中毒命中率，多模态碰撞单次攻击成本远低于$1，充分说明攻击的实用性与低门槛。然而论文存在若干局限：第一，攻击前提条件较强，F1/I1/I2均要求攻击者已知系统提示或完整输入前缀，在提示保密的部署场景下可行性下降；第二，实验规模偏小，仅使用Qwen2.5-7B单一模型与特定版本框架，尚未验证不同模型、不同哈希块大小下攻击的泛化性；第三，防御评估部分明显薄于攻击分析，五条防御策略的有效性实验深度不足，特别是"更强嵌入模型"和"LLM过滤"两类方案缺乏系统性对抗测试；第四，块级碰撞（I2）与多模态碰撞（I3）的实际可感知恶意效果依赖后续人工评估，GPT-5关键词检索作为评估指标较为粗糙，难以量化攻击的完整危害范围。
+
+---
+
+### 15. Bleeding Pathways: Vanishing Discriminability in LLM Hidden States Fuels Jailbreak Attacks
+
+- **会议/年份**: NDSS 2026
+- **作者**: Yingjie Zhang, Tong Liu 0027, Zhe Zhao 0007, Guozhu Meng, Kai Chen 0012
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/bleeding-pathways-vanishing-discriminability-in-llm-hidden-states-fuels-jailbreak-attacks/) · [DBLP](https://dblp.org/rec/conf/ndss/ZhangLZMC26)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+本文针对 LLM 越狱攻击（jailbreak）的内生防御问题。威胁模型为白盒场景，攻击者可访问模型权重、隐藏状态与梯度。核心威胁在于：现有安全对齐方法在响应生成过程中存在一个被忽视的动态退化漏洞——随着模型生成越来越多有害 token，其隐藏状态对"有害/无害"内容的区分能力（separability）持续下降，使初始安全卡点一旦被绕过后续防御形同虚设。这一根本性漏洞同时导致两类已知痛点：一是对良性但敏感查询的过度拒绝（over-refusal），二是对嵌套在看似无害任务中的恶意意图识别失效，覆盖 GCG、代码伪装、表示空间操纵等多类攻击向量，场景真实且工程意义重大。
+
+**🔧 核心技术**
+DEEPALIGN 是一种细粒度隐藏状态导向的微调框架，核心在于在自回归生成的中间阶段（随机采样有害前缀长度 t）施加对比式隐藏状态干预。方法由两个损失函数驱动：①Detoxify Loss 通过计算策略模型隐藏状态（H_policy）与参考模型上安全/有害状态之差的余弦相似度（H_policy → H_safe − H_bad），将隐藏状态轨迹从有害语义空间引导至安全区域，同时利用注意力机制防止有害前缀的毒性向后传播；②Retain Loss 通过对良性对话强制对齐策略模型与参考模型的隐藏状态，防止能力退化并强化对比学习效果。数据生成完全自包含：直接用被微调的模型本身，将有害查询包装为"无害化 prompt"生成安全对应响应，而非依赖外部对齐模型，再通过 WildGuard 过滤不安全样本。关键创新在于：仅对有害前缀末尾 k 个上下文 token 施加去毒化（而非全序列），既保留了模型对有害信号的识别能力，又阻止了后续有害状态扩散；此外以语境相关的多样化安全回复替代单一拒绝模式，从根本上扩大了可行安全响应空间，增强了对表示空间扰动类攻击（如 SCAV、RFA）的鲁棒性。
+
+**📝 评价**
+本文最大贡献在于提出了一个有说服力的新漏洞假说——生成过程中判别力退化（discriminability degradation），并用线性探针在多层多位置的 token 分类精度实验加以量化验证（图2、图4、图5），从机理层面解释了现有方法失效的原因，这比单纯的工程改进更有学术价值。实验规模覆盖 5 种架构/规模模型、9 类攻击（含白盒 GCG、黑盒伪装、表示操纵、多轮手动攻击），对比基线 6 种，指标维度兼顾安全性与功能保留，整体较为充分。不过，若干批判性问题值得关注：第一，自适应攻击的评估深度不足，论文虽提及"adaptive attack"，但攻击者针对 DEEPALIGN 本身的判别机制进行白盒优化的场景并未被深入覆盖；第二，Bergeron 作为 pipeline 级外部防御在部分场景与 DEEPALIGN 相当甚至更优（表I中多模型低 ASR），而论文以"utility 损失严重"为由弱化其地位，但在实际高安全场景中这一取舍未必成立；第三，WildGuard 充当训练数据质量守门人，引入了对下游安全分类器偏差的传递依赖，作者对此风险讨论不足；第四，方法在仅对中间层反向传播（缩短 2/3 路径）下训练，其在超大规模模型（70B+）上的效果与计算开销未被讨论。整体而言，这是一篇在机理分析和防御实效上均有扎实贡献的工作，但对更强自适应攻击的鲁棒性和 WildGuard 依赖的系统性影响有待进一步验证。
+
+---
+
+### 16. Q-MLLM: Vector Quantization for Robust Multimodal Large Language Model Security
+
+- **会议/年份**: NDSS 2026
+- **作者**: Wei Zhao, Zhe Li, Yige Li, Jun Sun 0001
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Amadeuszhao/QMLLM
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/q-mllm-vector-quantization-for-robust-multimodal-large-language-model-security/) · [代码](https://github.com/Amadeuszhao/QMLLM) · [DBLP](https://dblp.org/rec/conf/ndss/ZhaoLLS26)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+多模态大语言模型（MLLM）面临两类视觉模态安全威胁：一是基于梯度的对抗扰动攻击（ImgJP、VAA），利用视觉特征的连续性绕过文本安全对齐；二是内在有害图像攻击（HOD、ToViLaG），因文本安全机制无法迁移至视觉域而使模型生成有害内容。核心根源在于视觉嵌入的连续性——与离散化的文本token不同，连续视觉特征可被梯度优化操控。实验数据揭示：LLaVA-1.5、Qwen-2.5等SOTA模型对有害图像的防御成功率（DSR）近乎为零（约1.0–1.3%），威胁的现实性明确。
+
+**🔧 核心技术**
+Q-MLLM在视觉编码器输出处引入两级向量量化（VQ）以构建离散瓶颈：（1）像素-补丁级量化，用P=16000的codebook将576个patch嵌入映射为离散token，截断梯度反向传播路径；（2）语义级量化，用K=128的codebook对全局CLS嵌入量化，并通过与图像描述的对齐损失（L_semantic）增强其毒性分类能力。安全检测机制基于一个轻量校准数据集D_map（每类50张，中性500张），预建codebook索引到有害类别的映射函数M(k)，推理时若CLS量化索引超过阈值τ=0.6则直接拒绝输入。训练分两阶段：Stage 1冻结视觉编码器与LLM，联合优化codebook损失、commitment损失、语义对齐损失与生成损失训练投影层和codebook；Stage 2冻结VQ组件，仅用对话生成损失微调LLM。
+
+**📝 评价**
+创新性方面，将VQ离散化瓶颈应用于MLLM对抗防御是一个有价值的思路，两级量化的层次设计较为系统，但VQ用于对抗防御的核心思想在视觉模型中已有先例（论文自引[17][27]），真正新颖之处在于将其与跨模态安全对齐场景结合。实验数据扎实，覆盖白盒（ImgJP、VAA）和黑盒（FigStep、MM-SafetyBench）越狱攻击及多类有害图像，98.4%的平均越狱DSR和75.9%的有害图像DSR均显著优于基线，推理开销仅5.5%，结果具有说服力。然而论文存在一个关键漏洞：完全未评估自适应攻击——知晓VQ防御机制的攻击者可以设计能在离散映射后仍保留攻击语义的扰动，或专门针对codebook聚类结构进行优化，作者对此没有任何讨论或实验，"100% DSR"的强声明因此存在过度乐观之嫌。工具性能下降被低调处理：Q-MLLM-7B在POPE-random上为78.2%，LLaVA-1.5为84.1%，下降约6个百分点，在推理密集型任务上的量化损耗不可忽视。安全校准仅依赖每类50张图像和固定阈值τ=0.6，对分布外有害内容的泛化能力存疑，且codebook超参数（K=128，P=16000）缺乏系统消融。
+
+---
+
+### 17. Prεεmpt: Sanitizing Sensitive Prompts for LLMs
+
+- **会议/年份**: NDSS 2026
+- **作者**: Amrita Roy Chowdhury 0001, David Glukhov, Divyam Anshumaan, Prasad Chalasani, Nicolas Papernot, Somesh Jha 等
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/pr%ce%b5%ce%b5mpt-sanitizing-sensitive-prompts-for-llms/) · [DBLP](https://dblp.org/rec/conf/ndss/ChowdhuryGACPJB26)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文解决LLM推理阶段提示词中敏感信息泄露给第三方API提供商的隐私问题。威胁模型明确将LLM服务商（模型所有者）视为不可信对手，其可完整观察用户提交的原始提示词，包括SSN、信用卡号、年龄、薪资等PII数据。随着in-context learning的普及，原本属于训练时的隐私担忧被迁移至推理阶段，意大利、金融机构、医疗机构和三星/苹果等企业已因此禁止使用商业LLM API。现有基于同态加密/安全多方计算的方案计算开销极高（BERT单次推理超16分钟），而其他轻量方案要么缺乏形式化保证，要么需要修改LLM API接口，均不实用。
+
+**🔧 核心技术**
+Prεεmpt首先建立密码学风格的提示词净化器（prompt sanitizer）形式定义，包含Setup/TypeAnnotator/Sanitization/Desanitization四个算法，并通过基于泄漏函数L的隐私游戏Gpp_{PS,L}形式化安全性。核心创新是将敏感token按LLM响应的依赖特征分为两类：Category I（LLM响应仅依赖格式的token，如SSN、信用卡号、电话号码）采用格式保留加密（FPE）——密文与明文格式完全相同，可逆解密；Category II（LLM响应依赖具体数值的token，如年龄、薪资）采用度量局部差分隐私（mLDP），通过指数机制对数值添加噪声，噪声幅度与值间距离正相关，保持排序关系和数值邻近性。系统设计为无状态（stateless），每用户仅需一个固定密钥KU，通过可选辅助字符串Ψ编码token间函数依赖关系（如月薪×12=年薪）来统一扰动并避免额外隐私损耗。隐私预算ϵ在所有Category II token间平均分配，通过组合性质保证总损耗有界。
+
+**📝 评价**
+创新性方面，本文是首个为提示词净化提供形式化隐私保证的系统，FPE+mLDP双策略设计在直觉上合理：格式敏感的token需要可逆性，数值敏感的token需要可用的近似值，分类处理思路清晰。实验涵盖翻译、RAG、多轮对话、长上下文问答四类任务，翻译任务BLEU得分接近无净化基线，RAG任务准确率达100%，长上下文任务相似度0.934且优于Papillon对比方法，初步验证了实用性。然而批判性地看，本文最大局限是作者明确承认的范围限制：仅处理单个token层面的隐私，完全不处理来自上下文整体语义的信息泄露（如提示词虽无明显PII但可揭示用户心理健康）——这在实践中可能是危害更大的攻击面。Category II token经mLDP扰动后无法精确恢复原始值，若LLM响应中包含基于该数值的精确计算结果（如税后收入），则响应仍暴露扰动后数值的信息。实验规模偏小（翻译任务仅50个样本），缺乏对ε参数敏感性的系统评估和对抗性攻击测试。NER识别错误直接导致隐私保证失效，论文虽提供了NER错误的形式化分析框架，但未给出实际识别率下界对整体隐私保证的量化影响。
+
+---
+
+### 18. Les Dissonances: Cross-Tool Harvesting and Polluting in Pool-of-Tools Empowered LLM Agents
+
+- **会议/年份**: NDSS 2026
+- **作者**: Zichuan Li, Jian Cui, Xiaojing Liao, Luyi Xing
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❌ 否
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/les-dissonances-cross-tool-harvesting-and-polluting-in-pool-of-tools-empowered-llm-agents/) · [DBLP](https://dblp.org/rec/conf/ndss/LiCLX26)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对多工具协作型LLM智能体中的任务控制流安全问题。威胁模型设定攻击者将恶意工具混入合法工具池（pool-of-tools），利用LLM智能体依赖工具描述进行工具选择和调用排序的机制，劫持任务控制流（CFA hijacking），进而在不同工具之间横向收集敏感数据（XTH）或污染工具执行结果（XTP）。现实中LangChain、Llama-Index等主流框架鼓励批量导入工具包，加之社区贡献工具审查机制不健全，使得恶意工具混入合法工具池具有高度可行性。该威胁超越了以往单一恶意工具的研究范畴，针对多工具协作场景下的跨工具攻击链是首次系统化分析。
+
+**🔧 核心技术**
+论文提出XTHP（Cross-Tool Harvesting and Polluting）攻击框架，包含三个递进步骤：CFA劫持、跨工具数据收集（XTH）、跨工具信息污染（XTP）。CFA劫持通过三类攻击向量实现：（1）语义逻辑钩挂（Semantic Logic Hooking）——恶意工具声称自身是受害工具的前置依赖（如处理外部知识依赖、错误处理等），诱使LLM将其插入受害工具前后；（2）语法格式钩挂（Syntax Format Hooking）——声称提供受害工具所需的特定格式（如逗号分隔列表、JSON验证、URL验证）来实现钩挂；（3）动态工具描述——利用Toolkit动态实例化机制，从远程服务器加载恶意描述，规避静态审查。此外提出LLM偏好优化模块，通过两阶段迭代（描述评分+变异改写）自动生成LLM倾向选择的恶意工具描述。在XTH阶段，恶意工具通过在参数描述中植入数据请求指令，从智能体上下文中窃取其他工具产生的敏感数据；在XTP阶段，利用前置污染（篡改受害工具输入）或后置污染（篡改受害工具输出）来散布错误信息或操控决策。作者还开发了自动检测工具Chord，能自动生成XTHP工具并对目标工具执行端到端漏洞测试。
+
+**📝 评价**
+创新性较强：将攻击视角从单工具恶意行为扩展至多工具协作场景下的控制流劫持，提出CFA这一形式化定义并系统分类了八类攻击向量，思路清晰。实验规模合理：对LangChain和Llama-Index共66个真实工具测试，75%可被端到端CFA劫持、72%/68%可分别被XTH/XTP攻击，数据有说服力。对抗现有防御的评估也显示了攻击的现实威胁。然而存在几点局限：第一，攻击成功率依赖LLM对工具描述的解读，测试所用LLM型号及多模型泛化结果未在摘要部分清晰汇总，仅部分实验提及Qwen2.5/GPT-4o-mini，缺乏对更强推理型模型（如o1/Claude 3.5）下攻击有效性的系统评估；第二，Chord工具虽声称将在发表后开放，但目前仅提供视频演示，可复现性受限；第三，XTH攻击依赖LLM将上下文数据主动传递给恶意工具参数，成功条件在工具描述措辞上有较强约束，实际工程部署中系统prompt或安全指令可能抑制该行为，论文对此反事实分析不足；第四，威胁模型假设攻击者能将恶意工具成功混入工具池，但对该初始入侵条件的可行性验证主要依赖论述而非实证。
+
+---
+
+### 19. ThinkTrap: Denial-of-Service Attacks against Black-box LLM Services via Infinite Thinking
+
+- **会议/年份**: NDSS 2026
+- **作者**: Yunzhe Li 0001, Jianan Wang, Hongzi Zhu, James Lin 0001, Shan Chang, Minyi Guo
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/thinktrap-denial-of-service-attacks-against-black-box-llm-services-via-infinite-thinking/) · [DBLP](https://dblp.org/rec/conf/ndss/LiWZLCG26)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对云端黑盒LLM服务的拒绝服务（DoS）威胁：攻击者仅通过公开API接口（无法访问模型参数、梯度或logits）构造对抗性提示，诱导模型进入无限或超长生成循环，耗尽后端GPU算力和KV Cache内存资源，使合法用户请求延迟飙升或服务完全中断。威胁模型的非对称性在于：单次小token输入可在服务端引发O(n)线性增长的计算开销，而商业API的速率限制（如10 RPM）并不能阻止低频持续攻击。该场景具有现实紧迫性，攻击成本可极低（利用免费开源模型API tier）而受害方损失极高。
+
+**🔧 核心技术**
+ThinkTrap的核心由四个模块构成：①低秩嵌入投影（LEP）：将离散token序列映射为高维连续嵌入后，通过随机高斯投影矩阵A（元素独立采样自N(0,1/m)）将优化空间从400K+维压缩至20维潜向量z，解决DFO方法在高维离散空间的效率瓶颈；②代理提示解码（SPD）：由于目标模型嵌入层不可访问，利用不同LLM间词嵌入空间具有高度对齐性的经验规律，以公开可得的代理模型词嵌入矩阵做最近邻检索，将优化后的连续嵌入解码回离散token序列；③以输出长度为目标的CMA-ES导数自由优化（DFO）：在潜向量空间维护多元高斯分布N(μ,Σ)，每轮采样候选、查询受害LLM获取输出长度作为适应度，通过加权精英选择更新均值与协方差矩阵，无需任何梯度信息；④低频在线注入：离线优化完成后，按不超过API速率限制的频率周期性投放攻击提示，构成"慢速DoS"持续消耗服务资源。
+
+**📝 评价**
+创新性方面，将DFO（具体为CMA-ES）与低秩随机投影结合用于黑盒LLM DoS优化是该文的主要贡献，思路清晰且有一定工程价值。实验覆盖8个真实商业模型（含GPT-o4、Gemini 2.5 Pro、DeepSeek R1-671B），私有服务器上的量化结果（吞吐量降至1%、响应延迟提升100倍）具有较强说服力。然而存在明显局限：代理解码依赖跨模型嵌入空间对齐的假设缺乏理论保证，论文仅做了经验陈述而未对这一关键假设进行系统验证（如不同tokenizer体系下的对齐误差量化）；每组实验仅重复5次，对高方差场景的统计结论较脆弱；防御讨论极为薄弱，论文对输出长度检测、异常提示语义过滤等防御手段的绕过能力缺乏深入分析；攻击生成的对抗提示可读性与隐蔽性未评估，实际部署中内容过滤器的影响被低估；此外，论文直接指出可利用免费API tier零成本发起攻击，但缺乏负责任披露说明，伦理考量不足。整体而言是一项有实用价值的攻击研究，但理论深度和防御侧分析尚需补充。
+
+---
+
+### 20. Prompt Injection Attack to Tool Selection in LLM Agents
+
+- **会议/年份**: NDSS 2026
+- **作者**: Jiawen Shi, Zenghui Yuan, Guiyao Tie, Pan Zhou 0001, Neil Zhenqiang Gong, Lichao Sun 0001
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/prompt-injection-attack-to-tool-selection-in-llm-agents/) · [DBLP](https://dblp.org/rec/conf/ndss/ShiYTZGS26)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对LLM智能体中工具选择（tool selection）环节的提示注入攻击问题。当前LLM智能体普遍采用"检索+选择"两步流程从工具库中挑选工具，攻击者可通过在工具库中注入恶意工具文档来劫持这一过程，迫使智能体为攻击者指定的目标任务持续选择恶意工具。威胁场景高度现实：攻击者只需在Hugging Face Hub、Apify等开放平台发布含有精心构造描述的恶意工具，一旦被目标智能体集成，即可在无任何用户感知的情况下篡改工具选择结果，进而导致敏感数据泄露、未授权操作等严重后果。该问题的独特挑战在于攻击必须同时欺骗检索阶段（语义向量相似度）和选择阶段（LLM推理），而现有方法仅针对其中一个阶段，缺乏端到端攻击能力。
+
+**🔧 核心技术**
+ToolHijacker将恶意工具文档的构造形式化为一个优化问题，并在"无盒（no-box）"约束下（攻击者无法访问目标检索器、LLM、工具库及任务描述）通过影子框架（shadow framework）求解。核心设计是将工具描述拆分为两个子序列R⊕S，分别独立优化以应对检索子目标（R最大化与影子任务描述的语义相似度）和选择子目标（S诱导LLM输出恶意工具名称）。针对每个子目标，文章同时提供梯度无关方法和梯度依赖方法：梯度无关法利用LLM生成语义对齐的功能描述（R），并借鉴Tree-of-Attack思路迭代优化S，通过攻击者LLM生成变体、影子LLM评估、剪枝反馈完成树状搜索；梯度依赖法则对R使用HotFlip进行token级对抗优化，对S设计包含对齐损失L1、一致性损失L2和困惑度损失L3的复合损失函数，辅以位置自适应和逐步优化策略。两段拼接后形成可在检索和选择两阶段协同生效的完整恶意工具文档。
+
+**📝 评价**
+创新性方面，本文是首个系统性针对工具选择"检索+选择"端到端流程的无盒提示注入攻击，两阶段分解优化思路清晰且有充分理论动机，填补了现有工作只攻击单一阶段的空白。实验设计相当全面：覆盖8个目标LLM（含GPT-4o、Claude-3.5-Sonnet等主流闭源模型）、4个检索器、2个基准数据集，并与7种基线方法对比，梯度无关方法在MetaTool上对GPT-4o达到96.7% ASR，100% AHR，结果说服力较强。防御评估涵盖6种防御机制且均被绕过，强调了问题的紧迫性。然而存在几处不足：第一，no-box假设下仍需构建高质量影子框架（影子LLM、检索器、工具库），这对真实攻击者的门槛并非如论文所述那么低；第二，梯度依赖方法依赖Llama-3-8B作为影子LLM，对Claude、GPT-4o的迁移性下降明显（Claude-3-Haiku ASR最低仅74.3%），迁移性分析不够深入；第三，防御评估基本是现有通用防御的搬运测试，缺乏针对此攻击特性的专项防御探索，"现有防御不足"的结论实际上并不令人意外；第四，实验中每个目标任务仅设计10个任务、影子任务描述仅5条，任务多样性有限，泛化性结论需谨慎。
+
+---
+
+### 21. When Cache Poisoning Meets LLM Systems: Semantic Cache Poisoning and Its Countermeasures
+
+- **会议/年份**: NDSS 2026
+- **作者**: Guanlong Wu, Taojie Wang, Yao Zhang, Zheng Zhang, Jianyu Niu, Ye Wu 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/when-cache-poisoning-meets-llm-systems-semantic-cache-poisoning-and-its-countermeasures/) · [DBLP](https://dblp.org/rec/conf/ndss/WuWZZNWZ26)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+LLM系统中语义缓存（Semantic Cache）被广泛部署于Azure、AWS、阿里云等主流云平台，通过向量嵌入相似度复用query-response对来降低成本和提升性能。本文指出该机制存在根本性访问控制缺陷：任何合法用户均可向缓存注入精心构造的条目，导致其他用户在查询语义相似问题时收到攻击者预设的恶意响应。威胁场景包括医疗错误信息、恶意链接注入、品牌声誉破坏、定向广告、内容审查等，且单次注入即可影响大规模用户（如热门话题下的百万级相似查询）。该威胁之所以重要，在于它仅需普通用户权限即可实施，无需渗透LLM引擎本身。
+
+**🔧 核心技术**
+攻击分解为四个子需求：（R1）通过零样本提示、in-context learning或提示注入模板诱导LLM输出攻击者指定的Rpoison；（R2）构造语义相似的对抗查询Qadv——黑盒场景下直接将目标查询Qtarget与提示工程片段拼接（Qadv=Qtarget⊕PromptEng），白盒场景下通过梯度下降对前缀T做双目标优化（同时最大化嵌入相似度与文本相似度，并施加相似度阈值约束）；（R3）通过"哑查询"（dummy query）携带标记词的方式探测并主动触发FIFO/LRU缓存驱逐，清除干扰条目；（R4）攻击者周期性重发Qadv以对抗时间过期或容量驱逐策略，维持中毒效果。整体流程建模为五状态机（Start→Poison→Maintain/Evict→End），系统化覆盖了text-to-text（GPTCache及三大云）和text-to-image（GPTCache+Stable Diffusion）两类场景。
+
+**📝 评价**
+创新性明确：本文是首个系统性揭示LLM语义缓存缓存投毒漏洞的工作，并在AWS、Azure、阿里云三大生产环境中验证，实际攻击成功率达81%-89%，黑盒场景嵌入相似度均值0.87，说明简单的查询拼接在生产阈值（0.75-0.8）下即可奏效，攻击门槛极低。实验设计较为完整，涵盖三个QA数据集（TriviaQA/SQuAD/MS-MARCO）和一个图像数据集（Flickr30k），并分析了不同相似度分布对攻击效果的影响。然而存在几点局限：第一，维护攻击所需的重复注入成本未充分量化在高并发场景下的实际开销，文中承认高并发会显著缩短毒化条目存活时间，但未给出临界并发量的量化分析；第二，所提防御方案（F1=0.87）本身也承认无法完全缓解威胁，且对三种提示工程手法的检测效果差异未详细拆解，针对更高级对抗性提示的鲁棒性未充分论证；第三，白盒攻击的实用性在论文中并未占据主导地位——黑盒方案已足够有效，白盒部分的意义主要是理论上界估计，实际攻击者几乎不需要它；第四，时间维度的攻击持续性分析仅为补充性评估，对于缓存TTL为10秒的阿里云等场景，攻击维持机制的成本和可行性论述略显单薄。
+
+---
+
+### 22. Attention is All You Need to Defend Against Indirect Prompt Injection Attacks in LLMs
+
+- **会议/年份**: NDSS 2026
+- **作者**: Yinan Zhong, Qianhao Miao, Yanjiao Chen, Jiangyi Deng, Yushi Cheng, Wenyuan Xu 0001
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/attention-is-all-you-need-to-defend-against-indirect-prompt-injection-attacks-in-llms/) · [DBLP](https://dblp.org/rec/conf/ndss/ZhongMCDCX26)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对间接提示注入（Indirect Prompt Injection, IPI）攻击问题，即攻击者通过污染LLM-集成应用所检索的外部数据（如网页、文档），将恶意指令注入其中，诱导后端LLM执行攻击者意图的任务（如信息泄露、目标劫持）。现有防御方法存在两大核心缺陷：检测器对语义隐蔽攻击泛化性差，以及缺乏细粒度的注入定位与净化能力（仅检测到注入而无法恢复正常功能，导致拒绝服务）。该威胁已被OWASP列为LLM集成应用的第一大安全风险，场景涵盖Web Agent、邮件助手等高价值系统，攻击者可在黑盒（prompt engineering）或白盒（梯度优化）条件下发起攻击。
+
+**🔧 核心技术**
+RENNERVATE的核心思路是利用目标LLM自身的注意力特征（attention features）进行token粒度的注入检测与净化，而非依赖额外的大型辅助模型或修改目标LLM权重。具体地：（1）**Token-Level Detector**：对每个输入token提取目标LLM生成前m个响应token时对该输入token的注意力得分矩阵（维度为层数×头数×响应token数），作为分类特征；（2）**2-Step Attentive Pooling**：先通过Resp-Wise Attentive Pooling按重要性聚合响应token维度，再通过Head-Wise Attentive Pooling聚合注意力头维度，解决不同输入长度导致特征维度可变的问题，并自动学习哪些头/token对注入检测更具判别性；（3）**Injection Identifier**：对token级logit序列施加均值滤波（kernel size=5），统计连续被判为注入的token最大长度，超过阈值则判整段输入为注入；（4）**Injection Sanitizer**：将被标记为注入的token从输入序列中物理移除并重新detokenize，输出净化后的文本供LLM正常执行原始任务。整个检测器参数量极小（0.5~0.8M），并行化处理所有token，无需修改目标LLM。此外，作者构建了包含10万注入实例、涵盖5类攻击和300个NLP任务的细粒度数据集FIPI，并承诺开源。
+
+**📝 评价**
+**创新性**：将注意力特征用于token级别的IPI精准定位与净化，在思路上较Attention Tracker（仅做统计特征检测）和TaskTracker（基于激活值检测任务漂移）有明显推进，检测+净化一体化设计解决了纯检测方案引发拒绝服务的痛点，且无需修改或替换目标LLM，部署友好性好。**实验充分性**：横向比较了15个基线（含GPT-3.5、DeepSeek等LLM方法及多个classifier方法），覆盖5个LLM架构和6个数据集，IPI检测准确率97.88%~99.58%，净化后ASR降至接近0%，数据较为扎实。迁移性和自适应攻击鲁棒性实验也有涉及。**亮点**：FIPI数据集的构建（100k实例、token级标注、probe-witness机制保证标签正确性）有一定独立价值，且承诺开源。**局限与不足**：（1）评估的5个LLM参数量均为6B~8B量级，对GPT-4、Claude等闭源大模型（无法直接获取注意力权重）的适用性完全未讨论，这是最大的实用性缺陷；（2）FIPI数据集的注入类型以黑盒prompt engineering攻击为主，白�Box梯度攻击（POUGH、Neural Exec）在测试集中比例及效果未充分展示；（3）迁移场景中部分配置下Win Rate显著低于50%（如J-R场景仅1.90%~16.57%），说明净化操作在某些跨任务场景下存在明显语义损失，论文对此解释不足；（4）需要白盒访问目标LLM注意力层的假设在云API部署场景下可能不成立，与实际LLM应用部署模式存在落差；（5）自适应白盒攻击实验设计细节在截取内容中未完整呈现，其有效性有待更充分的验证。
+
+---
+
+### 23. Beyond Jailbreak: Unveiling Risks in LLM Applications Arising from Blurred Capability Boundaries
+
+- **会议/年份**: NDSS 2026
+- **作者**: Yunyi Zhang, Shibo Cui, Baojun Liu, Jingkai Yu, Min Zhang, Fan Shi 等
+- **类别**: benchmark/measurement
+- **分析依据**: 📄 全文
+- **是否开源**: ❌ 否
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/beyond-jailbreak-unveiling-risks-in-llm-applications-arising-from-blurred-capability-boundaries/) · [DBLP](https://dblp.org/rec/conf/ndss/ZhangCLYZSZ26)
+- **置信度**: 0.85
+
+**🎯 目标问题**
+本文针对LLM应用（GPTs、Coze等平台构建的智能体应用）因"能力边界模糊"引发的新型安全风险。威胁模型中攻击者仅需普通用户权限，通过精心构造的自然语言输入触发两类风险：一是"能力降级"（Capability Downgrade），使应用对其核心任务产生错误输出，如绕过LLM审计机器人；二是"能力升级"（Capability Upgrade），使应用执行超出其预定范围的任务，如零成本滥用企业内部LLM工具。该威胁独立于传统越狱（Jailbreak），不需要突破基础LLM的安全约束，因此绕过了现有防御机制，具有较强现实威胁性，且已有Rednote TikTok难民事件等真实案例佐证。
+
+**🔧 核心技术**
+论文构建了LLMApp-Eval评估框架，分三个模块：（1）应用收集与分类——从GPTs、Coze、AgentBuilder、Poe四平台爬取807,207个应用元数据，利用BART-large-mnli零样本分类模型将应用归入20个类别，人工抽样验证分类准确率96%；（2）Prompt质量量化评估——提出四维度评分体系（Target/Process/Capability/Constraint），综合使用词向量熵（PEScore）、关键词词袋余弦相似度（PWScore）、NLP连接词与从句计数、以及GPT-4o-mini对能力描述详细度和约束条目打分，最终归一化为AppScore；（3）能力边界评估——针对能力降级构造2,790对"正常vs含误导信息"的边界测试对，通过对比LLM输出变化评估鲁棒性；针对能力升级构造跨类型测试集（默认案例+GPT-4o生成的越界案例+通用案例），以GPT-4o为LLM Judge（准确率94.33%）自动判定应用是否完成越界任务；针对能力越狱复现SOTA越狱技术生成对抗案例。整体实验覆盖199个头部应用和6个开源LLM。
+
+**📝 评价**
+论文最大贡献在于率先将LLM应用"能力空间"形式化，并提出独立于传统越狱的新风险分类，概念清晰且有较强现实动机；89.45%应用受影响、17个应用无需对抗手段即直接执行恶意任务等数据具有一定震撼性。然而，批判性地看，能力降级评估采用的是"LLM鲁棒性模拟"而非直接测试目标应用，属于代理评估，与真实应用场景存在差距，结论外推需谨慎。Prompt评分体系中四个维度权重全部设为相等（均0.25），缺乏基于真实数据或专家意见的权重优化，导致评分体系的解释力偏弱，且PScore依赖预定义关键词袋，对多语言及非模板化prompt存在明显漏检风险（92%准确率中也承认了此问题）。能力升级实验测试的199个应用规模相对于807K+总量极小，头部应用的特殊选取策略可能导致样本偏差，"89.45%受影响"的结论能否代表整体生态存疑。此外，论文对防御方案的讨论停留于"prompt约束质量正相关于安全性"的定性结论，缺乏可操作的防御机制设计或量化基线，实用转化价值有限。
+
+---
+
+### 24. Shadow in the Cache: Unveiling and Mitigating Privacy Risks of KV-cache in LLM Inference
+
+- **会议/年份**: NDSS 2026
+- **作者**: Zhifan Luo, Shuo Shao 0002, Su Zhang, Lijing Zhou, Yuke Hu, Chenxu Zhao 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.ndss-symposium.org/ndss-paper/shadow-in-the-cache-unveiling-and-mitigating-privacy-risks-of-kv-cache-in-llm-inference/) · [DBLP](https://dblp.org/rec/conf/ndss/LuoSZZHZLQ26)
+- **置信度**: 0.82
+
+**🎯 目标问题**
+LLM 推理中的 KV 缓存（Key-Value Cache）在实际部署中以明文形式存储和传输，而用户与服务端的通信却通常加密，这一不对称设计暴露了严重隐私风险。在机密计算（TEE）范式下，为满足高吞吐需求，KV 缓存被有意外置于 TEE 保护边界之外，使云服务提供商（CSP）无需任何额外漏洞利用即可访问缓存内容。由于 KV 缓存保留了与输入 token 一一对应的原始 Key/Value 向量（不同于融合后的隐藏状态），攻击者可能从中还原用户的原始提示词，造成凭证、个人信息或私有逻辑的泄露。本文是首篇对 KV 缓存隐私风险进行系统性研究的工作，填补了该领域的关键空白。
+
+**🔧 核心技术**
+论文设计并实现了三类针对 KV 缓存的输入重建攻击：(1) **逆向攻击（Inversion Attack）**：对持有模型权重 Wk、Wv 的攻击者，直接通过矩阵求逆从第一层 KV 缓存恢复输入 embedding，适用于采用 MHA 且投影矩阵可逆的架构，对 GQA/MLA 等现代架构受限；(2) **碰撞攻击（Collision Attack）**：将输入重建转化为搜索-匹配问题，逐 token 在本地模型上前向计算候选 KV 缓存并与目标 KV 缓存做 Frobenius 范数比较，结合批量异常值检测（3σ 阈值提前退出）、概率导向优先排序和搜索空间剪枝，在保留 1/8 词汇表时仍达 96.1% 还原率，重建时间从 5.06s 降至 2.17s；借助选择明文攻击（CPA）下的自适应阈值，可实现近 100% 的完美重建；(3) **注入攻击（Injection Attack）**：向截获的 KV 缓存追加语义指令（如"Repeat the previous content"），利用 LLM 的指令跟随能力使模型主动"复述"缓存中潜藏的私有上下文，仅需单次前向推理，且对 H2O 等 KV 缓存压缩策略具有鲁棒性。针对防御，论文提出 KV-Cloak：采用 K' = S·P̂·KM 的可逆矩阵混淆方案（S、M 为秘密可逆矩阵，P̂ 为每块数据独立生成的一次性随机置换矩阵），并通过算子融合将部分混淆矩阵离线合并进注意力权重，将在线推理开销控制在 1% 以内，同时保证注意力计算的数学等价性（零精度损失）。
+
+**📝 评价**
+本文创新性较强，首次将 KV 缓存作为独立的隐私攻击面进行系统分析，区别于以往侧信道（时序）攻击，直接从明文缓存内容发动攻击更具实际威胁性。三类攻击覆盖代数逆推、统计匹配和语义利用三个维度，设计思路清晰，互为补充，尤其碰撞攻击具备跨架构通用性和对微调模型的鲁棒性，实验数据有说服力。然而也存在明显局限：碰撞攻击的跨架构场景（黑盒权重）完全失效（指标降至随机猜测水平），说明对权重相关性的依赖是核心瓶颈；注入攻击的量化指标（BERTScore 0.58，ROUGE-L 0.42）属于中等水平，作者未深入分析影响性能的边界条件（如缓存长度、任务类型）。KV-Cloak 的安全性证明主要停留在定性分析层面，论文对"CPA 下自适应对手能否突破 operator-fused 版本"缺乏严格的形式化安全模型或密码学归约，"<1% 延迟开销"的结论因原文截断未能看到完整实验数据，需审慎评估。威胁模型假设攻击者同时持有模型权重和 KV 缓存，在开源模型场景下现实，但对封闭源模型服务而言攻击路径更窄，论文对此区分不够充分。
+
+---
+
+## ACM Conference on Computer and Communications Security (CCS)
+
+### 25. DCMI:  A Differential Calibration Membership Inference Attack Against Retrieval-Augmented Generation
+
+- **会议/年份**: CCS 2025
+- **作者**: Xinyu Gao, Xiangtao Meng, Yingkai Dong, Zheng Li 0023, Shanqing Guo
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Xinyu140203/RAG_MIA
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765103) · [代码](https://github.com/Xinyu140203/RAG_MIA) · [DBLP](https://dblp.org/rec/conf/ccs/GaoMD0G25)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文针对检索增强生成（RAG）系统外部知识库的成员推断攻击（MIA）。威胁场景是：攻击者希望判断某条特定数据样本是否存在于RAG系统的私有检索数据库中，而非LLM训练集。这在医疗（SMART Health GPT）、金融风控、法律工具（AutoLaw）等场景下有直接隐私侵害意义。现有MIA方法忽略了"非成员检索文档（non-member-retrieved documents）"对RAG输出的干扰——当检索到与目标语义相近但非精确匹配的文档时，成员/非成员的响应质量信号大幅重叠，导致传统方法失效。该问题因RAG系统的top-k检索机制而具有结构性，是RAG特有的隐私漏洞，而非通用LLM问题。
+
+**🔧 核心技术**
+DCMI的核心思想是"差分校准"：利用成员文档与非成员文档对查询扰动的敏感性差异来消除干扰项。具体地：(1) 将推断任务改造为二元验证问题（"这段内容正确吗？请回答Yes/No"），消除多token生成的序列依赖误差；(2) 用第三方LLM对目标样本进行微量扰动（用反义词替换少量形容词/副词），生成扰动查询q'；(3) 将原始查询q的输出概率P_rag("Yes"|q)减去扰动查询的输出概率P_rag("Yes"|q')，差值作为成员推断信号——理论上非成员文档对扰动不敏感故被抵消，成员文档敏感故差值大；(4) 三种递进的对手模型：Adversary 1（灰盒+部分数据）、Adversary 2（灰盒+同分布参考数据，用Q3分位数作分类阈值）、Adversary 3（黑盒纯文本响应，用决策翻转信号1/0/-1区分）。整体架构仅需对RAG系统发起2次查询即可完成一次推断。
+
+**📝 评价**
+创新性较强：本文是首个系统分析RAG中非成员检索文档干扰效应的工作，并给出了理论框架（公式1-6）和定量验证（图2/3），差分校准的设计思路清晰有理论支撑。实验覆盖度高：5种RAG框架、4种生成模型、3种检索模块、2个数据集、3种对手模型，且在Dify/MaxKB真实平台上验证，可信度较好。不足之处有三：第一，核心假设（成员文档对扰动更敏感）在理论部分缺乏充分的形式化证明，仅凭图3的实验分布作支撑，对于为何语义层面"精确匹配"的成员文档反而对词汇扰动更敏感缺乏深层机制解释；第二，扰动策略（替换反义词）相当启发式，在非文本数据上的适用性（虽有Appendix M.1）未充分验证，且当数据无明显形容词/副词时方法可能退化；第三，真实平台（MaxKB）最高攻击成功率仅74%，远低于本地实验的97%+ AUC，说明现实部署中系统差异显著影响攻击效果，对此差距的分析不够深入；防御措施也仅作简单提及，实用性验证薄弱。
+
+---
+
+### 26. Riddle Me This! Stealthy Membership Inference for Retrieval-Augmented Generation
+
+- **会议/年份**: CCS 2025
+- **作者**: Ali Naseh, Yuefeng Peng, Anshuman Suri, Harsh Chaudhari, Alina Oprea, Amir Houmansadr
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/ali7naseh/RAG_MIA
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3744840) · [代码](https://github.com/ali7naseh/RAG_MIA) · [DBLP](https://dblp.org/rec/conf/ccs/NasehPSCOH25)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文针对检索增强生成（RAG）系统的知识库文档成员推断攻击。威胁模型为：攻击者以黑盒方式访问RAG系统，目标是判断特定文档是否存在于RAG的私有知识库中，而无需访问模型权重或内部参数。RAG系统参数免调的优势反而带来了独特的推断面——被检索的文档会出现在上下文窗口，形成信息泄露通道。该问题对GDPR合规、版权审计、知识产权保护均有现实意义。现有MIA方法依赖越狱或高困惑度对抗性查询，极易被Lakera、GPT-4o等守卫模型检测，在实际部署环境中几乎全部失效，这是本文试图填补的核心空白。
+
+**🔧 核心技术**
+本文提出Interrogation Attack（IA），核心思路是借鉴信息检索中的doc2query范式，用few-shot提示引导GPT-4o生成在语义上自然、但内容高度特异于目标文档的yes/no问题集合。每条查询由两部分拼接组成：Retrieval Summary（包含目标文档关键词的自然语言描述，确保RAG检索命中目标文档）与Probe Question（基于文档内容生成的探针性是/否问题）。攻击者使用shadow LLM（GPT-4o-mini）以目标文档为上下文生成ground truth答案，然后将查询提交给RAG系统，对比RAG响应与ground truth的一致性计算成员分数（Eq. 5），对"无法回答"响应额外施加惩罚λ。攻击仅需30条查询，成本低于$0.02/文档，且全程不依赖模型logit，符合纯黑盒假设。
+
+**📝 评价**
+创新性较强：将隐蔽性作为设计约束而非事后属性，是对现有RAG MIA研究的显著改进，detection rate从竞品的76%以上降至5%以下，同时AUC在多配置下接近完美（NFCorpus+Command-R高达0.991）。实验设计较为严谨，覆盖3个BEIR子集、4种生成模型、2种检索模型及query rewriting场景，并专门去除了高TF-IDF相似度的近重复非成员样本以避免评估虚高。批判性地看，该攻击存在若干重要前提限制：攻击者需完整持有目标文档才能生成特异性查询，这在许多实际场景中（如审计未知内容的RAG系统）并不成立，降低了威胁的普适性；yes/no问题结构虽便于评估，但对内容多元的文档（如TREC-COVID数据集，论文本身承认性能下降）泛化能力有限。此外，攻击依赖GPT-4o进行查询生成，引入了对商业API的外部依赖，与"黑盒对抗"的设定存在一定张力。论文对MBA基线的对比有失公平之嫌：明知MBA在实际系统中会被检测，却仍在"假设其能绕过检测"的前提下将其列为竞争对手，使得IA的优势论证在部分场景下显得自设靶心。
+
+---
+
+### 27. AgentSentinel: An End-to-End and Real-Time Security Defense Framework for Computer-Use Agents
+
+- **会议/年份**: CCS 2025
+- **作者**: Haitao Hu, Peng Chen, Yanpeng Zhao, Yuqi Chen 0001
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/m4p1e/agent-sentinel
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765064) · [代码](https://github.com/m4p1e/agent-sentinel) · [DBLP](https://dblp.org/rec/conf/ccs/HuCZ025)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+计算机使用智能体（computer-use agent）将LLM与操作系统工具深度集成，带来了区别于传统提示注入的新型安全威胁：LLM输出不稳定可能触发危险系统操作，攻击者可通过直接提示注入、恶意工具结果（间接提示注入）、后门激活、幻觉利用、恶意执行环境等六类途径引发不可逆的OS级损害。传统上下文级防御仅能看到工具名称/输入/输出，无法感知单次工具调用在OS层引发的多进程级联操作，存在根本性盲区。本文希望在不改变智能体整体架构的前提下，实现端到端、实时的操作系统级安全防御。
+
+**🔧 核心技术**
+AgentSentinel由四个核心组件构成：①智能体插桩模块，以极少代码改动将AgentSentinel客户端嵌入现有agent，非阻塞地将任务上下文和工具调用通知发送至监控服务器；②基于eBPF+Linux Security Modules实现的系统追踪与执行模块，在进程控制（fork/exec/kill/exit）、文件访问（open/remove/rename）、网络访问（connect/listen/accept/DNS）共16个探针上被动记录并可强制挂起/终止敏感操作；③混合安全审计模块，先由规则引擎快速判断，规则未命中时由LLM审计器结合任务上下文摘要与依赖事件树（以进程链结构组织）进行推理；④三级安全查询缓存（Universal/Task/Once），减少对LLM的重复查询，并配备QPS优化器在审计时间超出工具超时阈值时自动释放进程以保障可用性。整个方案在形式化层面被建模为可组合的状态变换器，不干预agent动作生成流，仅在side effect层面执行拦截与告警。
+
+**📝 评价**
+创新性方面，将eBPF/LSM系统追踪与LLM上下文审计组合用于computer-use agent防御是较新颖的工程设计，尤其是进程依赖树+任务上下文联合审计的思路有实际价值；BadComputerUse基准涵盖60个跨6类攻击的场景，填补了该细分领域缺乏攻击评测基准的空白。实验层面，在四个主流LLM上验证平均攻击成功率87%、防御成功率79.6%，优于所有基线，数据具有一定说服力。批判性方面：第一，79.6%的防御成功率意味着约20%的攻击仍未被拦截，论文对这些失败案例的分析较浅，未深入探讨哪类攻击/操作类型最难防御；第二，QPS优化器在审计预算耗尽后会主动放弃对进程的强制执行，这本质上是以安全换可用性的妥协，攻击者若能构造高频操作即可使部分操作逃脱审计，论文对此威胁的讨论不足；第三，评测完全在Ubuntu+Docker单机环境下进行，未覆盖Windows/macOS等主流桌面OS，也未涉及GUI操作（截图/鼠标/键盘）路径下的攻击，与真实computer-use场景有差距；第四，三级缓存机制在跨任务通用安全判断上依赖LLM的准确率，若LLM审计器本身被对抗性输入欺骗，缓存会将错误结论持久化，引入新的安全风险，论文未针对此情形进行对抗测试。
+
+---
+
+### 28. SecAlign: Defending Against Prompt Injection with Preference Optimization
+
+- **会议/年份**: CCS 2025
+- **作者**: Sizhe Chen, Arman Zharmagambetov, Saeed Mahloujifar, Kamalika Chaudhuri, David A. Wagner 0001, Chuan Guo 0001
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3744836) · [DBLP](https://dblp.org/rec/conf/ccs/ChenZMC0025)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+针对LLM集成应用中的提示注入攻击（OWASP评定的#1安全威胁）：攻击者将恶意指令注入外部数据（用户文档、网页检索、API返回值等），使LLM忽略系统设计者的合法指令而执行攻击者意图。现实中已有针对Slack AI等系统的成功攻击案例，可导致私人频道信息泄露。现有防御（如StruQ等微调方案）在对抗GCG、AdvPrompter等优化类攻击时攻击成功率（ASR）仍超50%，表明对未见攻击的泛化能力严重不足，亟需根本性改进。
+
+**🔧 核心技术**
+SecAlign将提示注入防御形式化为偏好优化（DPO）问题。核心洞察在于：现有微调防御仅最大化安全输出概率P(y_w|x)，而未显式最小化不安全输出概率P(y_l|x)；由于LLM输出空间指数级大（V^L种可能），单纯拉升安全输出概率对排斥不安全输出影响甚微，这与分类器AT的情况根本不同。SecAlign使用DPO损失构建偏好数据集(x, y_w, y_l)：从公开指令微调数据集中，将一条样本的指令注入另一条样本的数据域构造攻击输入，以原始期望输出为y_w、注入指令的正常响应为y_l，全流程无需人工标注。训练仅使用简单的Straightforward与Completion攻击（90%/10%比例），通过DPO最大化安全/不安全输出的对数概率差（margin），实现对测试阶段未见复杂优化类攻击的泛化防御。
+
+**📝 评价**
+理论动机充分且新颖：用LLM与分类器输出空间的本质差异解释现有方法失效，为引入偏好优化提供了清晰的理论依据，这一分析具有独立价值。实验设计较为全面：覆盖3种优化无关攻击和3种优化类攻击（GCG/AdvPrompter/NeuralExec），在5个不同规模模型上验证，优化类攻击ASR从StruQ的>40%大幅降至<10%，AlpacaEval2实用性几乎无损，Fig.5的GCG损失曲线也直观佐证了防御机制的有效性。然而存在若干值得关注的局限：安全评估集仅208个AlpacaFarm样本，规模偏小，且攻击目标单一固定为"Print exactly Hacked!"，对真实世界多样化攻击意图的覆盖不足；威胁模型假设攻击者具有对微调后模型的完整白盒访问权限，但论文未评估攻击者知晓防御方使用DPO并针对性进行自适应优化的场景，这是最关键的缺失；此外，LoRA微调仅更新<0.5%参数，在面对更强自适应攻击时的稳健性上限尚不清晰；评估指标Max ASR聚合方式也可能掩盖个别攻击的高成功率细节。
+
+---
+
+### 29. You Can't Steal Nothing: Mitigating Prompt Leakages in LLMs via System Vectors
+
+- **会议/年份**: CCS 2025
+- **作者**: Bochuan Cao, Changjiang Li, Yuanpu Cao, Yameng Ge, Ting Wang 0006, Jinghui Chen
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ❌ 否
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765124) · [DBLP](https://dblp.org/rec/conf/ccs/CaoLCG0C25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对LLM应用中的系统提示词（System Prompt）泄露问题。威胁模型为黑盒攻击场景：攻击者无法直接访问系统提示词或模型权重，但可通过反复构造恶意用户查询，诱导模型复述其上下文中的系统提示词，进而窃取应用知识产权。该问题的根本脆弱性在于：只要系统提示词以明文形式存在于LLM上下文中，攻击者就可以通过恢复模型的上下文复述能力来绕过任何基于模式匹配的防御。作者首先提出"Remember-the-Start"攻击验证了GPT-4o、Claude 3.5 Sonnet等SOTA商用模型仍然存在此风险，说明该问题的实际危害性。
+
+**🔧 核心技术**
+SysVec的核心思路是将系统提示词从LLM的文本上下文中彻底移除，改为将其编码为模型内部隐层的表示向量。具体做法是：借鉴DPO（Direct Preference Optimization）框架构造偏好数据对——preferred response为含系统提示词的正常输出，dispreferred response为不含系统提示词的输出——并通过优化目标在指定的第ℓ层隐空间中搜索系统向量v_sys，使得注入该向量后模型行为等价于使用原始文本系统提示词。推理时，v_sys通过f^{1:ℓ}(x) + α·v_sys的方式直接注入隐层激活，完全不占用文本token序列。每个系统提示词需用约800条问答样本训练约25个epoch以获得对应向量。此外，论文还提出了"Remember-the-Start Attack"：利用已知的系统提示词常见起始短语（如"You are ChatGPT"）重新唤起模型的上下文复述能力，从而绕过训练式防御。
+
+**📝 评价**
+创新性方面，将系统提示词从上下文中彻底移除并向量化是解决提示词泄露问题的一个根本性思路转换，比现有"训练模型拒绝敏感词"类防御更具原理上的彻底性，值得肯定。实验层面，在三个开源模型（Llama-2-7B、Llama-3-8B、Mistral-7B）和多类攻击方式下，PLS分数均有显著下降（如Llama-3下Ignore-Remember攻击从8.43降至3.56），数据充分说明防御有效性；MMLU和RUS实验也初步验证了功能保全性。然而存在几个关键局限：第一，该方法本质上要求对模型隐层具有白盒访问权限（需注入激活向量），而商用API部署场景下根本无法实现这一点，导致论文虽成功攻破GPT-4o/Claude但防御方案却无法部署在这些模型上，攻防对象存在根本性错位。第二，每个新系统提示词均需独立优化（800样本、25 epoch），规模化部署代价较高，与OpenAI生态中数百万个定制GPT应用的实际需求差距明显。第三，实验仅覆盖5个任务、3个7-8B量级开源模型，缺乏对更大模型（13B+）或复杂多轮对话场景的验证；OOD数据上的性能下降（平均-0.23到-0.37 RUS）虽然被轻描淡写，但说明泛化性问题尚未解决。第四，PLeak攻击评估中直接使用了预先计算好的对抗后缀而非针对目标模型重新优化，对PLeak攻击强度有所低估。
+
+---
+
+### 30. Cascading Adversarial Bias from Injection to Distillation in Language Models
+
+- **会议/年份**: CCS 2025
+- **作者**: Harsh Chaudhari, Jamie Hayes, Matthew Jagielski, Ilia Shumailov, Milad Nasr, Alina Oprea
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765122) · [DBLP](https://dblp.org/rec/conf/ccs/ChaudhariHJSNO25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文研究知识蒸馏场景下对抗性偏见的级联传播问题：攻击者通过在教师模型指令微调阶段注入极少量毒化样本（0.25%~0.5%），使教师模型习得定向偏见（如广告植入、网络钓鱼链接、不安全代码生成等），该偏见在蒸馏到学生模型后不仅得以保留、甚至被显著放大。威胁场景真实可信——工业界广泛依赖外部供应商提供指令微调数据集，攻击者只需控制少量众包标注者即可完成投毒，无需接触模型架构或蒸馏流程。该威胁尤为重要，因为蒸馏服务（如OpenAI、Google的distillation-as-a-service）已大规模商用，安全隐患影响下游千万级用户。
+
+**🔧 核心技术**
+论文提出BIASED-ROOTS攻击框架，核心包含两种传播模式与一套GAN启发式毒化样本生成机制。(1) 无目标传播（Untargeted Propagation）：从学生蒸馏任务分布中采样多样化载体查询，使偏见泛化至任意任务，包括OOD任务；(2) 有目标传播（Targeted Propagation）：仅采样目标任务分布的查询，使偏见精确锁定单一任务，不向其他任务泄漏，提升隐蔽性。(3) 载体响应生成采用迭代式外部Oracle：Bias Generator负责生成含偏见响应，Bias Scorer（另一LLM）评分并反馈，两者迭代直至响应在表面上看起来正常但嵌入了偏见——这一机制同时帮助绕过困惑度过滤、偏见检测等防御。(4) 实验覆盖文本蒸馏与logit蒸馏两种方式、Gemma2-9B/2B与Qwen系列模型、6种偏见类型及代码生成场景。
+
+**📝 评价**
+创新性方面，本文首次系统研究偏见在蒸馏链路中的'级联放大'现象，发现学生模型在OOD任务上的ARR可比教师模型高5.7×~29.2×，这一放大效应是新颖且反直觉的发现，具有重要安全意义。实验设计较为充分，覆盖了两种传播模式、两种蒸馏方法、多种模型、6种偏见类型及代码模态，并评估了三类防御（困惑度过滤、偏见检测、LLM自动评分）均失效。然而存在若干局限：(1) 模型规模受限（教师9B、学生2B），未验证在百亿级以上模型或GPT-4等闭源模型上的可重现性；(2) 攻击假设攻击者能采样到与学生蒸馏分布对齐的查询，此知识在黑盒场景下的可得性有待深入讨论；(3) 防御评估较浅显，仅说明现有机制不足，未提供可落地的有效防御方案，'设计原则'停留在指导层面；(4) ARR指标对'Gibble'关键词的字符串匹配可靠性有限，尽管加入了LLM误报过滤，但对更隐晦的偏见类型（如叙事操控）的度量方式尚不够精确。整体来看是一篇立意清晰、威胁场景现实、实验较为系统的攻击论文，但防御侧工作明显薄弱，需后续研究补充。
+
+---
+
+### 31. MoEcho: Exploiting Side-Channel Attacks to Compromise User Privacy in Mixture-of-Experts LLMs
+
+- **会议/年份**: CCS 2025
+- **作者**: Ruyi Ding, Tianhong Xu, Xinyi Shen, Aidong Adam Ding, Yunsi Fei
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765174) · [DBLP](https://dblp.org/rec/conf/ccs/DingXSDF25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对混合专家（MoE）架构LLM/VLM中因动态路由产生的侧信道隐私泄露问题。威胁模型为：攻击者与受害者共享同一物理机器（本地恶意进程或云端恶意共租户），通过监控硬件执行痕迹（专家激活模式的时空足迹）来推断用户输入或模型输出。MoE架构的核心优势——输入相关的动态专家路由——恰恰使得不同用户输入在硬件层面留下可区分的执行痕迹，成为全新攻击面。随着DeepSeek、Llama 4等MoE模型被大规模部署于云服务，该威胁具有极高现实危害性。
+
+**🔧 核心技术**
+MoEcho将攻击分为侧信道采集与隐私推断两阶段，分别针对CPU和GPU设计了四种架构侧信道：（1）CPU-L1指令缓存占用信道：通过持续测量L1 I-Cache加载时间，利用专家模块内nn.linear层在矩阵乘前后的指令多样性造成的缓存峰值，推断每个专家的令牌负载（Expert Load L）；（2）CPU-L2数据缓存占用信道：利用DeepSeekMoE专家内三个线性层权重矩阵尺寸不同导致的GEMM块大小差异，联合PELT变点检测算法辅助标定专家边界；（3）CPU-Pageout+Reload信道：借助Linux madvise(MADV_PAGEOUT)将每个专家的首页换出，victim执行后通过重加载时延判断是否被激活，以此重建专家激活序列（Expert Sequence S）；（4）GPU-性能计数器信道：利用Nsight监控每个专家的nn.selu激活函数线程数（Pearson相关系数=1），直接映射至专家令牌负载；（5）GPU-TLB Evict+Reload信道：向4GB dummy buffer写入以完全逐出L3 TLB，victim执行后测量各专家权重参数的内存访问时延以判断TLB命中，从而恢复专家序列。在此基础上提出四类攻击：Prompt Inference Attack（PIA，分类模型从expert load推断输入属性）、Response Reconstruction Attack（RRA，从expert sequence逐token重建输出）、Visual Inference Attack（VIA，从VLM的MoE信号推断图像属性/身份）、Visual Reconstruction Attack（VRA，以条件生成模型从expert load重建原始图像）。
+
+**📝 评价**
+创新性方面，本文是首篇系统性分析MoE架构运行时侧信道的工作，将传统缓存/TLB侧信道攻击范式扩展至LLM场景，并针对CPU与GPU分别设计了差异化的信道构建方法，覆盖四种攻击场景，工程深度可观。实验亮点在于端到端攻击成功率高：DeepSeek-V2 Lite上PIA在医疗记录场景达99.8%，RRA达92.8%，具有强说服力。T检验验证了expert activation与用户数据的统计相关性，从理论上支撑了攻击可行性。然而存在几处明显局限：第一，威胁模型中的GPU侧信道要求攻击者能访问Nsight性能计数器，这在实际多租户云环境中通常受严格权限控制，论文未充分论证此假设的实际可达性；第二，CPU侧信道要求攻击者与受害者共享PyTorch库，属于共享库假设，在容器化隔离部署场景下可行性存疑；第三，TLB Evict+Reload存在3.4%因块共享导致的误判率，且论文对该误差如何传播至下游攻击精度的分析不够细致；第四，论文仅评估了开源MoE模型（DeepSeek-V2 Lite为主），对于专有部署（如API调用的远程LLM服务）的威胁边界并未充分讨论，泛化性有待验证；第五，防御措施仅在最后简短讨论，缺乏有效性量化实验。
+
+---
+
+### 32. Give LLMs a Security Course: Securing Retrieval-Augmented Code Generation via Knowledge Injection
+
+- **会议/年份**: CCS 2025
+- **作者**: Bo Lin 0011, Shangwen Wang, Yihao Qin, Liqian Chen, Xiaoguang Mao
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ❌ 否
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765049) · [DBLP](https://dblp.org/rec/conf/ccs/LinWQCM25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+检索增强代码生成（RACG）系统在安全方面存在严重缺陷：现有系统只关注功能正确性，忽视代码安全性。攻击者可向知识库注入含漏洞的代码样本（知识库投毒），诱使LLM生成不安全代码——实验表明即使单个毒化样本也会导致48%的生成代码含漏洞。该威胁在现代AI辅助软件开发中影响巨大，但目前缺乏专门针对RACG场景下内部预训练知识与外部检索知识交互引发的安全问题的防御机制。
+
+**🔧 核心技术**
+CodeGuarder的核心思路是在RACG提示词中同时注入功能代码示例与安全知识，实现'安全知识注射'防御。离线阶段从ReposVul漏洞数据库构建安全知识库，每条知识包含功能描述、漏洞根因（自然语言+代码示例）和修复模式三维结构，通过LLM自动提取。在线阶段分三步：(1) 利用LLM将用户查询分解为细粒度子任务（query decomposition），基于jina-embeddings-v3余弦相似度为每个子任务检索top-k'安全知识条目；(2) 引入重排与过滤机制——依据先验研究中各CWE类型在LLM生成代码中的出现频率为每条知识分配权重，对子任务按聚合风险分值降序排列并保留top-k（k=5）高风险子任务；(3) 将过滤后的安全知识（根因描述+修复模式）拼接到原始RACG提示词中，引导LLM在生成代码时规避已知漏洞模式。
+
+**📝 评价**
+创新性方面，将安全知识库与检索增强代码生成系统结合、并设计针对漏洞高发频率的重排机制，是该场景下较有针对性的系统设计，'先课程后生成'的思路新颖。实验较为充分：覆盖4个LLM（含开闭源、通用/代码专用）、4种语言、3种场景（标准RACG、两种投毒场景），在标准场景下平均安全率提升20.12%，两种投毒场景下分别提升31.53%和21.91%，且不损害功能性。但存在若干明显局限：(1) 功能性评估主要依赖CodeBLEU相似度（与参考代码对比），这并不能真正衡量功能正确性，虽补充了MBPP和HumanEval但未报告RACG场景下直接的pass@k；(2) 安全检测依赖CyberSecEval的静态规则（精度96%），对复杂漏洞类型覆盖有限，且测试集本身偏C/C++，Java/Python场景的漏洞覆盖深度存疑；(3) 重排机制中用来确定CWE权重的'先验分布'来自单一外部研究（310K指令集），其分布代表性未经本文验证，权重设计较为粗糙；(4) 对于攻击者同时投毒功能知识库和安全知识库的更强威胁模型未作讨论；(5) 论文未开源代码，可复现性存疑。
+
+---
+
+### 33. Prompt Inference Attack on Distributed Large Language Model Inference Frameworks
+
+- **会议/年份**: CCS 2025
+- **作者**: Xinjian Luo, Ting Yu 0001, Xiaokui Xiao
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❌ 否
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3744820) · [DBLP](https://dblp.org/rec/conf/ccs/Luo0X25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+分布式LLM推理框架（如Petals）将模型层分布在多个参与方之间，推理过程中需在客户端与服务端之间传输中间层激活（sequence embeddings）。敌手若持有某些层（服务端模块），可截获这些中间输出并尝试逆向重建原始输入prompt。此威胁在医疗、企业分析等敏感场景下尤为严重，但此前学术界对该漏洞的系统性研究几乎空白，分布式LLM框架的开发者也未给出明确的隐私风险量化。
+
+**🔧 核心技术**
+论文提出三种逐步收紧约束条件的prompt推理攻击方案：A1（无限查询预算+同分布辅助数据）的核心洞察是LLM中间embedding主要由序列末尾token决定（前序token影响微弱），因此将prompt重建转化为token级分类问题，用MLP分类器φ: e_i → t_i完成逐token重建，完全绕开了transformer生成模型的长度与误差传播限制；A2（无限查询+分布不同辅助数据）针对覆盖外token的问题，设计了随机序列embedding合成策略——对每个缺失token随机构造前缀序列并查询以生成合成embedding用于数据增强，覆盖分布外token；A3（有限预算+无辅助数据）采用三阶段半监督框架：先用最近邻搜索（结合熵置信度筛选）标注高置信度target embeddings作为锚点，再用正则化MLP分类器迭代扩充已标注样本，最后对未能标注的位置使用候选约束+上下文感知的beam search（以开源shadow LLM为语言模型）进行语义填充。整体设计无需训练shadow模型、不受序列长度限制、token间误差不传播，且对LLM架构通用。
+
+**📝 评价**
+创新性较强：将中间激活重建问题解耦为token级分类而非序列生成，借助embedding空间中按末尾token聚类的经验规律，设计出轻量且架构无关的攻击框架，思路清晰。实验覆盖了Llama-3.2、Phi-3.5、GPT-2、BERT四种模型及WikiText-2、SQuAD2.0、Midjourney、PrivatePrompts四个数据集，A1/A2攻击在大多数设置下超过90%重建准确率，A3在最低预算下也通常超过50%，数据具说服力。然而论文存在若干局限：第一，'重建准确率'以token-level accuracy衡量，对部分攻击场景而言可能高估实际信息泄露程度（语义层面损失更具用户可感知性，缺少BLEU/ROUGE等端到端语义指标的全面对比）；第二，攻击假设adversary完全控制服务端模块且能在本地运行LLM embedding层，现实中此类部署场景的普遍性有待商榷；第三，防御方案仅在讨论层面提及embedding扰动/差分隐私方向，未设计具体防御并量化攻防权衡；第四，A3中beam search阶段依赖开源shadow LLM，若目标模型与shadow LLM差异较大，性能下降幅度的鲁棒性分析不足。整体而言是该细分方向的重要先导工作，但实用性和防御维度的深度有待后续补充。
+
+---
+
+### 34. YouthSafe: A Youth-Centric Safety Benchmark and Safeguard Model for Large Language Models
+
+- **会议/年份**: CCS 2025
+- **作者**: Yaman Yu, Yiren Liu, Yuqi Zhang, Yun Huang 0003, Yang Wang 0005
+- **类别**: benchmark/measurement
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765168) · [DBLP](https://dblp.org/rec/conf/ccs/YuLZH025)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+当前LLM安全基准和内容审核系统并非针对青少年（13-21岁）用户设计，忽视了青少年与生成式AI交互中特有的发展心理学风险，如情感过度依赖、grooming操控、身份混乱、边界违反等细微但危害深远的伤害。现有系统（OpenAI Moderation API、LLaMA Guard等）主要应对成人场景下的显式有害内容，无法捕捉上下文敏感且发展阶段特异的风险信号。本文以一名14岁少年在长期与角色扮演AI交互后自杀的真实悲剧为动因，指出该安全盲区的迫切性与后果严重性。
+
+**🔧 核心技术**
+论文构建了两个核心贡献：（1）YAIR数据集——收集15名青少年IRB批准的真实聊天记录344条（YAIR-LOG，3,999片段），并通过GPT-4o构建场景+DeepSeek R1生成多轮对话的两步合成流水线生成YAIR-SYN（8,450片段），总计12,449条带标注对话片段，覆盖基于发展心理学的三级91个细粒度风险类型；采用人工注释（IRR=0.84）与机器验证（Cohen's κ=0.82）的混合标注方式保障质量。（2）YouthSafe模型——以Aegis-Guard-Defensive为基座，在YAIR-TRAINING上通过LoRA指令微调（LLaMA-Factory框架，4块L40S GPU，6个epoch），设计统一prompt格式支持二分类风险检测与11类中级风险分类两项任务。评估框架同时测试在模型原有分类体系（on-policy）和YAIR分类体系（off-policy）下的表现，使用AUPRC、F1、精准率、召回率全面比较。
+
+**📝 评价**
+亮点在于问题定位精准且具社会意义——首个专门面向青少年的LLM安全基准，三层91类风险分类体系在粒度上远超现有框架，评估结果（YouthSafe F1=0.88 vs. 最强基线Aegis F1=0.74）也确实揭示了现有系统的系统性缺陷，特别是OpenAI Moderation API召回率仅0.046这一令人震惊的数据。批判性来看，数据规模局限明显：真实聊天记录仅来自15名美国参与者，样本量极小且可能存在选择偏差，真实数据对全部78个风险类型的覆盖率仅72.5%；大量依赖合成数据（约68%）虽经验证但仍可能高估模型在真实部署环境中的泛化能力。合成数据使用DeepSeek R1是因为其在高风险类别（grooming、自残等）上拒绝率更低，这本身就是一个值得审视的伦理选择——意味着安全性更弱的模型被用于生成训练数据。YouthSafe的评估完全在YAIR-HUMANVAL上进行，该测试集约73%为合成数据，存在train-test同源偏差风险。此外，论文未讨论YouthSafe在非英语语境或跨文化场景的适用性，也未分析模型在实际部署中的时延等工程指标。
+
+---
+
+### 35. ImportSnare:  Directed 'Code Manual' Hijacking in Retrieval-Augmented Code Generation
+
+- **会议/年份**: CCS 2025
+- **作者**: Kai Ye, Liangcai Su, Chenxiong Qian
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://importsnare.github.io/
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765161) · [代码](https://importsnare.github.io/) · [DBLP](https://dblp.org/rec/conf/ccs/YeSQ25)
+- **置信度**: 0.87
+
+**🎯 目标问题**
+本文针对检索增强代码生成（RACG）系统中的恶意依赖劫持攻击面展开研究。威胁模型为：攻击者向RAG数据库（如GitHub、StackOverflow爬取的文档）注入含隐蔽恶意包名（如matplotlib_safe）的中毒文档，并在PyPI等官方仓库上传对应恶意包；当开发者使用LLM进行代码生成时，被检索出的中毒文档诱导LLM在import语句中推荐恶意依赖，开发者盲目信任LLM输出后执行pip install完成攻击链。该攻击利用双重信任链：LLM对RAG上下文的信任 + 用户对LLM建议的盲信，在LLM驱动开发工具普及背景下具有高度现实威胁性。
+
+**🔧 核心技术**
+ImportSnare框架分两个正交攻击分量：（1）ImportSnare-R（检索排名操纵）——采用位置感知束搜索（Position-aware Beam Search），在代码文档的行尾插入Unicode扰动序列（Ranking Sequence），通过类HotFlip的梯度引导token替换策略最大化中毒文档与代理查询的嵌入余弦相似度，从而在Contriever等检索模型中提升排名；关键点在于不依赖对真实用户查询的了解，仅需代理查询池近似分布，且支持双轮搜索以修正引入Inducing Sequence后的排名波动。（2）ImportSnare-G（生成诱导）——利用多个主流LLM生成针对目标包名的"改进建议"文本（Inducing Sequence），翻译成8种语言，通过Teacher Forcing概率估计选取最能诱导代理LLM输出目标包名的最优建议，作为代码注释插入中毒文档；核心创新在于通过LLM自我生成的建议覆盖其内部安全对齐，属于间接提示注入。两个序列插入位置无需对齐，且刻意保留语义无意义性以规避人工审查。
+
+**📝 评价**
+创新性较高：本文是首篇系统性研究RACG依赖劫持攻击面的工作，将RAG中毒与软件供应链攻击结合，威胁场景设计真实，双信任链利用视角新颖。实验覆盖Python/Rust/JavaScript三种语言、多款SOTA闭源LLM（GPT-4o 67% ASR、DeepSeek-R1 51% ASR）及多种检索框架（LlamaIndex、LangGraph），跨模型转移性验证较充分；0.01%极低中毒率下仍能成功的发现尤其值得关注。主要不足有三：一是防御措施讨论（论文前48k字符已截断）可能较薄弱，仅曝光问题而缺乏可操作的缓解方案；二是JavaScript ASR显著低于Python/Rust，暴露了攻击对语言灵活依赖导入模式的局限，作者解释略显不充分；三是Inducing Sequence的选优仅依赖Teacher Forcing概率估计，与实际生成分布存在偏差，且翻译成多语言的真实收益（相较纯英文）缺少消融实验佐证。整体而言，实验设计扎实，但对抗真实RAG防御系统（如文档真实性验证、包名白名单）的鲁棒性尚待检验。
+
+---
+
+### 36. FlippedRAG: Black-Box Opinion Manipulation Adversarial Attacks to Retrieval-Augmented Generation Models
+
+- **会议/年份**: CCS 2025
+- **作者**: Zhuo Chen, Yuyang Gong, Jiawei Liu 0002, Miaokun Chen, Haotan Liu, Qikai Cheng 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765023) · [DBLP](https://dblp.org/rec/conf/ccs/ChenG0CLCZ0L25)
+- **置信度**: 0.83
+
+**🎯 目标问题**
+本文针对黑盒RAG系统中的观点操纵攻击展开研究。威胁模型设定为攻击者仅能查询RAG接口、无法获取检索器/LLM内部参数，只能向语料库注入少量经篡改的文档。现有工作主要面向白盒场景或事实型问答的启发式黑盒攻击，对争议性开放问题的观点操纵几乎空白——而此类攻击危害更深：它可以形成"信息茧房"，系统性地扭曲用户在政治、健康、社会等敏感议题上的认知与决策，比纠正一个错误事实答案难得多。
+
+**🔧 核心技术**
+FlippedRAG分两阶段实现黑盒攻击。第一阶段为检索器仿真：利用精心设计的提示词诱导黑盒RAG将检索到的原文完整输出（利用LLM的指令遵循能力），从而收集到（查询, 正例文档）对；再从语料库随机或从低排名位置采样负例，以InfoNCE对比损失训练代理检索器（基于BERT），使其近似黑盒检索器的排序偏好。第二阶段为迁移攻击：在白盒代理检索器上应用PAT（Pairwise Anchor-based Trigger）策略，通过梯度优化生成兼顾相关性提升与语言流畅度的对抗性触发词，将其前缀插入持有目标观点的文档，注入RAG语料库，使该文档跃升至检索top-k，引导LLM生成倾向目标立场的回复。关键设计在于：通过"诱导RAG复读检索内容"这一观察，绕过了传统黑盒攻击无法直接获取检索结果的瓶颈，实现了高质量对比训练样本的构建。
+
+**📝 评价**
+创新性上，将检索器仿真与观点操纵结合应用于黑盒RAG的思路有一定新颖性，尤其是"诱导LLM复读检索内容以构建代理训练数据"的观察颇具实际意义，揭示了RAG上下文泄漏这一真实风险。然而触发词生成阶段完全沿用现有PAT方法，并无算法层面的创新；整体攻击链本质是"仿真+迁移"这一成熟范式在RAG场景的拼接。实验覆盖4种检索模型（含Qwen3-Embedding-4b）、3种LLM、30个争议话题，OMSR达40-53%、ASV约0.46，且对最新强检索器Qwen3的迁移效果明显下降（OMSR仅30-40%），说明更强的嵌入模型本身具有一定鲁棒性，但作者仅简单归因于"Co-Condenser和Qwen3更鲁棒"而未深入分析原因。用户认知偏移实验（声称20%认知转变）的具体实验设计在全文截断部分，无法评估其严谨性。防御评估仅列举了几种启发式措施并指出其不足，但未设计系统化的自适应防御对比，结论说服力有限。此外，实验设置使用开源LLM而非真实商用黑盒RAG（如带联网搜索的GPT），与声称的黑盒场景存在一定落差。
+
+---
+
+### 37. Differentiation-Based Extraction of Proprietary Data from Fine-Tuned LLMs
+
+- **会议/年份**: CCS 2025
+- **作者**: Zongjie Li, Daoyuan Wu, Shuai Wang 0011, Zhendong Su 0001
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3744856) · [DBLP](https://dblp.org/rec/conf/ccs/LiWW025)
+- **置信度**: 0.82
+
+**🎯 目标问题**
+本文首次系统研究从微调大语言模型（Fine-Tuned LLM）中提取专有监督微调（SFT）数据集的可行性。威胁模型假设攻击者仅具有黑盒API访问权限，但可获取生成token的logits信息（调查表明绝大多数主流API平台提供或计划提供此功能）。SFT数据集通常由人工标注或高质量数据精炼而成，包含有价值的领域特定指令-响应对（如医疗诊断、专业代码），其商业价值高且规模远小于预训练数据。攻击者一旦提取成功，可用提取数据重新微调自己的模型，以极低成本复制受害模型的领域能力，构成严重的知识产权与隐私泄露威胁。
+
+**🔧 核心技术**
+论文提出DDE（Differentiated Data Extraction），其核心机制是利用微调模型与基础模型的行为差异来克服自回归生成中的「分支偏差（branch deviation）」问题。具体分四步：①分支点识别——使用阈值τ=0.8标记生成序列中概率低于阈值的token位置作为潜在偏差点；②新分支生成——从识别到的偏差点出发，分别驱动SFT模型和基础模型生成多条备选序列（最多MBR=10条）；③代表性选择——在SFT分支集合中，选取距离基础模型分支集合最近的「Closest」分支（代表欠拟合数据）和在SFT集合内部最孤立的「Outlier」分支（代表充分学习或过拟合数据）；④掩码数据补全——对含有掩码的不完整指令/响应，利用SFT模型生成完整指令以提升重训练攻击质量。此外，论文提出两种攻击类型（I-R和R-I）、三种指令保留变体（PWP/PSP/SSP，保留率25%/50%/75%），以及重建攻击和重训练攻击两种目标，构建了完整的评估框架。
+
+**📝 评价**
+问题定义层面有较强原创性：首次将SFT数据提取形式化为独立安全问题，区别于已有的预训练数据提取工作（如Poem/Random攻击），并论证了无目标攻击对SFT场景的不适用性。核心创新点DDE的设计逻辑自洽——以NTC指标（平均0.8297）证明MFT确实记忆了SFT数据，再通过分支差异化绕过提取障碍，思路清晰。实验规模存在局限：只选用了7B参数量级模型（LLaMA2-7B, CodeLlama-7B）和每域3K样本，未验证攻击在更大模型（13B/70B）或更大规模SFT数据上的泛化性；此外，对logits可访问性的假设虽经过调研支撑，但仍不适用于不暴露logits的部署场景（如Claude/Gemini部分API）。评估指标方面，重建攻击使用BLEU/Token/Embed三种指标，但论文被截断导致无法核实各场景下的完整数值结果；防御机制仅声称性能影响在3%以内，但防御效果的完整数据亦在截断前未出现。R-I攻击的内在难度与I-R攻击的不对称性分析较为深入，但论文未能提供足够的R-I场景实验数据来充分支撑这一结论。整体上这是一篇有实际意义的工作，但实验广度和模型规模需进一步扩展才能支撑更强的结论。
+
+---
+
+### 38. Can Personal Health Information Be Secured in LLM? Privacy Attack and Defense in the Medical Domain
+
+- **会议/年份**: CCS 2025
+- **作者**: Yujin Kang, Eunsun Kim, Yoon-Sik Cho
+- **类别**: attack|defense
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ✅ 是 — https://github.com/yujinKang32/Private_Med_LLM.git
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765105) · [代码](https://github.com/yujinKang32/Private_Med_LLM.git) · [DBLP](https://dblp.org/rec/conf/ccs/KangKC25)
+- **置信度**: 0.72
+
+**🎯 目标问题**
+本文聚焦于医疗领域大语言模型（LLM）泄露患者隐私健康信息（PHI）的安全威胁。威胁模型为：攻击者通过精心构造的提示（prompt-based attacks）诱使经医疗数据微调的领域专用LLM输出训练集中的机密患者数据。医疗场景下隐私泄露危害尤为严重，因为涉及患者病史、诊断、用药等高度敏感信息，违规后果涵盖法律责任（如HIPAA）与患者人身安全风险。相比通用LLM，领域适配模型因深度记忆特定患者数据而面临更高的成员推断与数据提取风险。
+
+**🔧 核心技术**
+核心技术路线分为攻击与防御两部分。攻击端采用基于提示的黑盒攻击方法，针对医疗数据集训练的LLM实施隐私提取测试，验证模型是否会在特定提示下复现训练数据中的患者信息。防御端引入红队（red teaming）策略：作者构建并公开发布了MediRed数据集，包含1,000条专门针对医疗场景设计的红队攻击样本，覆盖多种隐私攻击模式。利用MediRed对目标LLM进行对抗性微调或安全增强训练，使模型学习识别并拒绝隐私泄露类请求。实验表明，相较于基础模型，该防御方案最高可将隐私保护能力提升56%。
+
+**📝 评价**
+论文同时覆盖攻击与防御两个维度，并公开了MediRed数据集，具有一定的社区贡献价值。56%的防御提升是该工作的核心定量亮点，但仅凭摘要无法判断这一指标的评估协议——具体以何种指标衡量'隐私保护'（如攻击成功率下降、PII输出频率、成员推断准确率）尚不明确，存在指标选取偏向有利结论的风险。MediRed数据集仅含1,000条样本，规模相对有限，多样性与覆盖攻击类型的全面性有待验证，是否能泛化到真实攻击者的创意性提示仍存疑。防御机制的具体实现（是微调、RLHF、输出过滤还是提示护栏）在摘要中未明确，这直接影响对方案可移植性与实用性的判断。此外，论文未涉及防御措施对模型医疗任务效用（utility-privacy trade-off）的影响评估，这是医疗AI落地的关键维度，属于明显的实验缺口。
+
+---
+
+### 39. PreferCare: Preference Dataset Copyright Protection in LLM Alignment by Watermark Injection and Verification
+
+- **会议/年份**: CCS 2025
+- **作者**: Jian Lou 0001, Chenyang Zhang, Xiaoyu Zhang 0010, Kai Wu 0003
+- **类别**: defense
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3765223) · [DBLP](https://dblp.org/rec/conf/ccs/0001ZZW25)
+- **置信度**: 0.62
+
+**🎯 目标问题**
+LLM 对齐训练依赖高质量偏好数据集（preference dataset），其生成与标注成本极高，但现有机制缺乏对未授权使用的版权保护手段。攻击者可直接利用他人构建的偏好数据集进行 RLHF/DPO 等对齐训练而无需授权，数据集所有者无法举证维权。本文的威胁模型是：数据集所有者希望在第三方将其数据集用于微调 LLM 时，能够通过黑盒查询方式统计地验证该模型是否确实使用了被保护的数据集。此问题在商业对齐服务与开源数据集生态中具有现实法律意义。
+
+**🔧 核心技术**
+PreferCare 分为注入（injection）与验证（verification）两阶段。注入阶段利用**风格迁移（style transfer）**将水印信号嵌入偏好数据集的文本风格层面，同时设计**双层水印优化（bi-level watermark optimization）**：外层优化水印注入效果，内层模拟受保护数据集训练出的模型行为，使水印信号在对齐训练后仍能被模型习得。验证阶段对疑似模型进行黑盒查询，通过统计检验判断该模型是否使用了含水印的数据集，声称仅需 20 次查询即可完成验证。核心创新点在于将水印目标从模型层面前移至对齐训练的数据层面，并通过双层优化保证水印在对齐训练流程（如 RLHF/DPO）后的存活性。
+
+**📝 评价**
+将水印技术专门适配偏好数据集版权保护是该方向较早的系统性工作，选题具有实际价值。双层优化设计在概念上合理，能够兼顾水印嵌入效果与对训练质量的影响（无害性）。然而，仅凭摘要无法评估实验的实质严格程度：论文声称满足 'effectiveness, harmlessness, transferability, robustness' 四项性质，但未披露在何种对齐算法（RLHF/DPO/PPO 等）上的具体数字结果，也未说明水印对下游对齐性能的实际损耗。最关键的局限在于：若攻击者对数据集施加轻微改写、混合其他数据或进行文本清洗（paraphrase attack），风格迁移型水印的鲁棒性存疑——摘要虽声称 robust 但未给出具体攻击场景与量化结论。此外，20 次查询即可验证的效率声明需要结合误报率（false positive）与误漏率数据才有说服力，摘要对此未作说明。
+
+---
+
+### 40. Poster: Agentic Shell Honeypot Using Structured Logging
+
+- **会议/年份**: CCS 2025
+- **作者**: Kai Wei, Guangjing Wang 0001
+- **类别**: framework/system
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3760731) · [DBLP](https://dblp.org/rec/conf/ccs/WeiW25)
+- **置信度**: 0.62
+
+**🎯 目标问题**
+传统Shell蜜罐依赖静态规则响应，无法真实模拟多轮对抗交互场景；现有基于LLM的Shell蜜罐虽引入了语言模型，但仍存在三类核心缺陷：提示注入漏洞（攻击者可通过命令输入操控LLM行为）、状态不一致（跨多轮交互的会话状态难以维护）、以及响应延迟过高（影响实战部署可行性）。本文的威胁模型针对主动探测和渗透Shell环境的攻击者，目标是构建能以假乱真、同时抵御攻击者操控LLM的高保真蜜罐系统。
+
+**🔧 核心技术**
+HoneyAgents采用多智能体架构，包含三项关键设计：（1）角色委托架构（role-delegate architecture），将功能拆分为「战略智能体」和「响应智能体」，前者负责意图判断与提示注入防御，后者负责生成Shell响应，分层设计可有效隔离并抵御提示注入攻击；（2）结构化日志机制（structured logging），通过持久化记录交互历史来维护长期会话状态，解决多轮对话中的状态漂移与不一致问题；（3）多智能体协作中的层级规划设计（hierarchical planning），通过任务分解与调度优化，在动态交互时间约束下生成具有可信度的Shell响应，降低响应延迟。整体架构以智能体协作替代单一LLM调用，提升了系统的鲁棒性与真实感。
+
+**📝 评价**
+本文将多智能体系统设计引入蜜罐领域具有一定工程创新价值，特别是针对LLM蜜罐独有的提示注入风险设计专门防御机制，视角较为新颖。然而，作为Poster论文，实验评估的深度存在明显局限：摘要中仅笼统声称「提升了鲁棒性、真实感和效率」，缺乏具体的量化指标（如提示注入成功率下降比例、响应延迟绝对值、攻击者欺骗成功率对比基线等），无法判断实际改进幅度。角色委托架构对抗提示注入的机制描述较为模糊——若战略智能体本身也基于LLM，则其自身同样可能遭受提示注入，形成循环依赖风险，论文未说明如何根本性解决此问题。此外，结构化日志带来的长期记忆在大量并发攻击者场景下的性能影响未作讨论，实际大规模部署可行性存疑。整体而言，论文提出的思路有实用价值，但受限于Poster形式，理论深度和实验严谨性均不足，需完整论文才能充分验证其有效性。
+
+---
+
+### 41. Poster: Towards Intelligent Assurance for Autonomous AI Pentesters: Concurrent Compliance Auditing and Self-Augmentation via Execution Trace Analysis
+
+- **会议/年份**: CCS 2025
+- **作者**: Gustavo Sánchez 0001, Adam Lundqvist
+- **类别**: framework/system
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1145/3719027.3760713) · [DBLP](https://dblp.org/rec/conf/ccs/SanchezL25)
+- **置信度**: 0.4
+
+**🎯 目标问题**
+随着AI自主渗透测试工具（AI Pentesters）的兴起，其在缺乏人工监督的情况下执行攻击性安全任务时，如何保证操作合规性、符合EU AI Act等监管要求以及道德行为规范成为核心挑战。传统渗透测试依赖人工判断边界，而全自主AI代理在执行漏洞挖掘与利用时可能越界或产生不可解释的决策，存在法律与伦理风险。本文旨在为这类高风险自主AI系统提供持续的合规审计与问责机制。
+
+**🔧 核心技术**
+本文提出「智能保障系统」（IAS），核心思路是通过监控AI渗透测试器的执行轨迹（execution traces）实现实时合规审计与自我增强。IAS包含三个主要功能模块：（1）执行轨迹监控，持续采集并分析AI代理的操作序列；（2）合规强制执行，将轨迹与预定义的监管规则（如EU AI Act条款）对齐，实时检测违规行为；（3）自我增强机制，通过轨迹分析反馈指导AI代理改进未来决策。系统强调资源效率，力图在不显著增加计算开销的前提下实现上述目标。然而由于仅有摘要，具体的轨迹表示方式、合规规则编码形式以及自我增强的实现细节均不可知。
+
+**📝 评价**
+该工作选题具有前沿意义，将AI代理合规性与自主攻击性安全工具结合是少有人系统化讨论的交叉领域，尤其在EU AI Act落地背景下具有一定时效价值。但本文以Poster形式发表，摘要内容极度简略，缺乏任何实验数据、案例分析或与基线方法的对比，无法判断IAS的实际有效性。'执行轨迹分析'作为核心手段并非新颖概念，其在AI安全场景中的具体适配创新点不明。'自我增强'与合规审计同时实现在工程上存在目标冲突风险（合规约束可能抑制能力提升），但论文未见讨论。整体而言，该工作更像是一份研究愿景声明，而非成熟技术贡献，学术严谨性有待正式论文验证。
+
+---
+
+## USENIX Security Symposium
+
+### 42. StruQ: Defending Against Prompt Injection with Structured Queries
+
+- **会议/年份**: USENIX 2025
+- **作者**: Sizhe Chen, Julien Piet, Chawin Sitawarin, David A. Wagner 0001
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Sizhe-Chen/StruQ
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/chen-sizhe) · [代码](https://github.com/Sizhe-Chen/StruQ) · [DBLP](https://dblp.org/rec/conf/uss/ChenPS025)
+- **置信度**: 0.97
+
+**🎯 目标问题**
+本文针对LLM集成应用中的提示注入攻击（Prompt Injection）问题。威胁模型为：攻击者可任意修改查询中的数据部分，但无法修改提示词（prompt）；攻击成功定义为LLM执行了数据中隐藏的恶意指令而非开发者预设指令。该问题根源在于现有LLM将提示词与用户数据混合为单一字符串输入，无法区分控制信号与数据，类比于SQL注入等经典注入漏洞。此类攻击已被OWASP列为LLM应用的头号安全风险，可导致提示词泄露、任务劫持或输出控制等危害。
+
+**🔧 核心技术**
+StruQ通过将提示词与数据分离为「结构化查询」来从根本上解决问题，包含两大组件：（1）安全前端：使用特殊保留token（[MARK]、[INST]、[INPT]、[RESP]、[COLN]）作为分隔符替代普通文本字符串，并对用户数据递归过滤，删除所有可能伪造分隔符的字符串（包括##），从而使Completion攻击中利用相同分隔符的策略完全失效；（2）结构化指令微调（Structured Instruction Tuning）：在训练数据集中混入50%干净样本和50%攻击样本（其中数据部分含注入指令），攻击样本的期望输出仅响应prompt部分指令，通过微调使模型学会忽略数据部分的任何指令；攻击样本分为Naive attack注入和Completion-Other attack注入两类，无需人工设计恶意样本，训练成本低于BIPIA等方案。特殊token的初始嵌入向量由语义相近的已有token嵌入初始化，以保证微调收敛质量，这一细节被作者强调为实用性关键。
+
+**📝 评价**
+创新性方面，StruQ将经典安全工程中「分离控制与数据通道」的思路（类比SQL prepared statements）系统性地引入LLM场景，概念层面有较强说服力，且先于OpenAI指令层级（Instruction Hierarchy）工作公开发布。实验覆盖15种以上攻击类型，特别是首次将TAP和GCG等优化型越狱攻击改造为提示注入评估场景，具有方法论贡献。对手工攻击的防御效果极为显著（几乎所有类别降至0-2% ASR），且对AlpacaEval实用性影响可忽略不计。然而，针对优化型攻击仍存在显著漏洞：GCG攻击成功率在Llama和Mistral上仍高达58%和56%，TAP在Mistral上也有36%，作者坦承防御对任务感知型定制注入泛化能力不足，但仅停留在定性分析层面，未提出具体解决路径。此外，评估仅在7B级别的Llama和Mistral上进行，未验证方法在更大规模模型或闭源API场景下的有效性；AlpacaEval作为单一实用性指标也较为有限，难以全面反映结构化查询对复杂多轮对话任务的影响。前端过滤方案在极端用例（如用户数据本身需包含特殊标记字符串）下的可用性代价亦未讨论。
+
+---
+
+### 43. PoisonedRAG: Knowledge Corruption Attacks to Retrieval-Augmented Generation of Large Language Models
+
+- **会议/年份**: USENIX 2025
+- **作者**: Wei Zou, Runpeng Geng, Binghui Wang, Jinyuan Jia 0001
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/sleeepeer/PoisonedRAG
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/zou-poisonedrag) · [代码](https://github.com/sleeepeer/PoisonedRAG) · [DBLP](https://dblp.org/rec/conf/uss/ZouGW025)
+- **置信度**: 0.97
+
+**🎯 目标问题**
+本文针对检索增强生成（RAG）系统中知识数据库这一新攻击面，提出知识污染攻击。威胁模型中攻击者无需访问LLM或知识库原有内容，仅需向知识库注入少量恶意文本，即可操控LLM对特定问题生成攻击者预设的错误答案（如误导财务、医疗或政治信息）。随着RAG被大量部署于Bing Search、Perplexity AI、医疗/法律咨询等高风险场景，此类攻击的现实危害不可忽视。攻击门槛低，例如只需恶意编辑少量维基百科页面即可实现注入，因此极具实用性。
+
+**🔧 核心技术**
+PoisonedRAG将知识污染攻击形式化为优化问题，并推导出有效攻击必须同时满足的两个充要条件：检索条件（恶意文本须被检索器Top-k命中）和生成条件（恶意文本作为上下文时须引导LLM输出目标答案）。核心设计是将恶意文本P分解为两段子文本S（保证检索）和I（保证生成），S与I的拼接P=S⊕I同时满足两个条件，有效规避了二者之间的语义冲突。生成条件通过调用LLM（如GPT-4）构造"看起来合理的虚假知识"来实现，平均仅需约2次LLM查询。黑盒设定下直接令S=目标问题Q（极简但高效）；白盒设定下用HotFlip对S做梯度优化，最大化恶意文本与目标问题的嵌入相似度，进一步提升检索命中率（F1接近1.0）。
+
+**📝 评价**
+本文最大贡献是将RAG攻击明确分解为检索与生成两个独立子问题，这一框架化思路比此前的提示注入、语料库污染等方法更具理论清晰度，后续工作已广泛采用该框架。实验规模可信：覆盖3个大规模知识库（最大880万文本）、8个LLM、3种检索器，ASR普遍超过90%，基准对比充分。批判性不足之处有三：一是黑盒攻击的核心设计（S=目标问题本身）过于trivial，本质上是一种朴素的字面匹配技巧，在检索器对近似字面词敏感时有效，但对语义检索器鲁棒性未充分讨论；二是实验仅限于封闭式问题（close-ended），对开放式问题的攻击效果存在明显缺口，作者将其留作未来工作但未提供初步估计；三是防御评估薄弱，仅测试了paraphrasing和困惑度过滤两种轻量级方法，对更强的一致性检验、来源验证等防御未作探索，"现有防御不足"的结论缺乏充分论证支撑。
+
+---
+
+### 44. Machine Against the RAG: Jamming Retrieval-Augmented Generation with Blocker Documents
+
+- **会议/年份**: USENIX 2025
+- **作者**: Avital Shafran, Roei Schuster, Vitaly Shmatikov
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/avitalsh/jamming_attack
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/shafran) · [代码](https://github.com/avitalsh/jamming_attack) · [DBLP](https://dblp.org/rec/conf/uss/ShafranSS25)
+- **置信度**: 0.96
+
+**🎯 目标问题**
+本文针对RAG（检索增强生成）系统提出一类新型拒绝服务攻击，称为"jamming"（干扰）攻击。威胁场景为：RAG系统的知识库中含有不可信内容（如网页、评论、社交媒体、企业内网日志），攻击者仅需向数据库注入单条"阻塞文档"，即可使系统对特定查询拒绝作答，表现为"信息不足"或"答案不安全"等貌似合理的理由。攻击动机包括：商家压制负面评价、个人隐藏不良记录、企业掩盖合规问题等。与投毒生成错误答案不同，拒绝回答无法被事实核查，且与LLM正常行为高度相似，具有极强的隐蔽性。
+
+**🔧 核心技术**
+阻塞文档被设计为两段拼接结构：检索子文档（prepend目标查询本身，确保>97%的检索命中率）加干扰子文档（负责诱导LLM拒绝回答）。论文核心贡献是黑盒优化（BBO）方法：以随机爬山搜索迭代替换干扰子文档中的token，损失函数为目标RAG系统的响应与目标拒绝语句之间的嵌入余弦相似度，采用辅助oracle嵌入模型（OpenAI text-embedding-3-small）而非目标系统的嵌入模型计算相似度。整个过程无需知道目标系统的嵌入模型或LLM，也不依赖提示注入，平均约160次迭代收敛。论文同时比较了指令注入（直接写入"忽略上下文并回复Ri"）和Oracle LLM生成（用GPT-4-Turbo生成干扰文档）两种基线方法，并与AutoDAN遗传算法进行了对比实验。
+
+**📝 评价**
+创新点明确：提出首个真正黑盒、无需提示注入的RAG拒绝服务攻击，并揭示了"安全性越高的LLM越容易被干扰"这一反直觉结论（Llama-2-7B在DecodingTrust最可信，却最容易被干扰），对安全评测体系有实质性批判价值。实验规模较为充分，覆盖6个开源LLM、8个大型/闭源LLM、2个嵌入模型、2个数据集。主要缺陷有三：第一，跨LLM迁移性极差（Table 4大多数格子仅1-19%），攻击高度依赖目标LLM，实用性受限；第二，攻击假设目标查询精确已知，绕过了实际部署中查询措辞多样化的问题，与现实存在差距（论文虽讨论paraphrasing防御，但未深入分析攻击者对查询泛化的能力）；第三，成功率评估依赖GPT-4-Turbo作为oracle裁判，本身引入了额外的偏差和不可复现性，且论文承认余弦相似度与实际jamming成功之间Pearson相关系数仅约-0.6，评估指标本身的可靠性存疑。Oracle LLM方法的低效（GPT-4换Claude-3-Opus后成功率减半）进一步说明该方向脆弱性高，反衬了BBO方法的相对稳健。
+
+---
+
+### 45. LLMmap: Fingerprinting for Large Language Models
+
+- **会议/年份**: USENIX 2025
+- **作者**: Dario Pasquini, Evgenios M. Kornaropoulos, Giuseppe Ateniese
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/pasquini-dario/LLMmap
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/pasquini) · [代码](https://github.com/pasquini-dario/LLMmap) · [DBLP](https://dblp.org/rec/conf/uss/PasquiniKA25)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文针对LLM集成应用中的模型版本识别问题，提出了一种主动指纹识别攻击。威胁模型为：攻击者仅能通过黑盒API与目标应用交互，无法获取logits、系统提示、采样超参数等内部信息，目标是以最少查询次数准确识别后端LLM的具体版本。识别版本后，攻击者可进一步实施针对性的提示注入、梯度优化攻击、利用模型特定漏洞（如MoE缓冲区溢出、glitch tokens）等，使LLM指纹成为多阶段攻击的侦察前置步骤。该问题的重要性在于：LLM版本信息是高价值情报，能将通用攻击转化为高精度定向攻击。
+
+**🔧 核心技术**
+LLMmap采用主动指纹识别框架，核心由两部分组成：（1）查询策略设计——从约50个候选查询（涵盖元信息查询、banner抓取、对齐利用的有害/争议性提示、不一致输入等多类别）中，通过贪心搜索筛选出8个兼具跨模型高差异性（inter-model discrepancy）和同模型高一致性（intra-model consistency）的最优查询组合；并可配合prompt injection执行触发器来压制系统提示干扰，提升intra-model consistency。（2）ML推理模型——对每条查询-响应对用多语言文本嵌入模型（multilingual-e5-large-instruct）编码后，经投影层降维，再通过轻量级Transformer自注意力架构聚合，得到分类向量。闭集分类器直接输出42类版本预测（全监督训练）；开集分类器采用对比学习训练孪生网络，生成LLM行为向量签名，支持扩展数据库匹配新模型而无需重训练。整个推理模型仅约8M参数（~30MB），可在普通机器上运行。
+
+**📝 评价**
+创新性方面，LLMmap是首个系统化的LLM主动指纹识别方法，类比OS指纹识别（nmap）进行了有价值的迁移创新，开集分类的对比学习设计具有实际扩展性。实验覆盖42个模型版本（含OpenAI、Anthropic闭源模型），在不同系统提示、温度、RAG/CoT框架下均验证了>95%的准确率，8次查询即可完成，实验设计较为充分。亮点在于揭示了'弱查询的协同效应'——单独效果差的查询在组合中可大幅提升准确率，这是有实质意义的发现；对banner grabbing失效原因（训练数据污染、系统提示覆盖）的分析也有说服力。批判性不足：（1）论文训练和测试数据均来自自建模拟环境，未在真实第三方LLM集成应用上验证，真实场景中rate limiting、输出过滤等工程措施的影响未被充分评估；（2）查询策略通过贪心搜索选取，缺乏理论最优性保证，且8个固定查询是否对未来新模型持续有效存疑；（3）防御性分析部分论文虽提及反制措施困难，但缺乏对具体防御方案有效性的定量实验，结论略显武断；（4）闭源模型（OpenAI/Anthropic）实验规模仅为'三种主流模型'，样本代表性有限。
+
+---
+
+### 46. Great, Now Write an Article About That: The Crescendo Multi-Turn LLM Jailbreak Attack
+
+- **会议/年份**: USENIX 2025
+- **作者**: Mark Russinovich, Ahmed Salem 0001, Ronen Eldan
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Azure/PyRIT
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/russinovich) · [代码](https://github.com/Azure/PyRIT) · [DBLP](https://dblp.org/rec/conf/uss/Russinovich0E25)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文针对大语言模型（LLM）的安全对齐机制提出攻击，威胁模型为完全黑盒场景：攻击者仅需通过正常API交互即可绕过ChatGPT、Gemini、Claude、LLaMA等主流模型的安全护栏。核心威胁在于现有对齐训练和输入过滤器主要防御单轮、包含明显恶意内容的提示，而针对多轮渐进式良性输入的防御几乎空白。攻击目标涵盖爆炸物制作、毒品合成、仇恨宣言、自我伤害内容等高危类别，在多个商业生产系统中均可复现，具有现实危害性。
+
+**🔧 核心技术**
+Crescendo是一种多轮渐进式越狱技术，其核心思想是'温水煮青蛙'：从无害的相关背景问题出发，利用模型自身已生成的输出作为后续提示的上下文锚点，逐步引导模型突破安全限制，整个对话过程中用户侧输入始终保持人类可读且表面无害。论文还提出自动化工具Crescendomation，以GPT-4作为攻击模型，通过元提示+历史摘要+反馈循环（Judge/Secondary Judge/Refusal Judge三层评估）自动生成并迭代优化多轮提示序列，并引入回溯机制（最多10次重问）绕过单次拒绝。论文用LLaMA-2 70b对'fuck'一词的token概率进行消融实验，量化验证了上下文累积对模型输出概率的影响（A→B→C链路成功率99.9% vs. 直接问C仅17.3%，改为明确说出目标词的C'则成功率<1%），从机制层面解释了为何借用模型自身生成内容比显式描述目标更有效。
+
+**📝 评价**
+创新性方面，将'foot-in-the-door'心理学策略系统化为可复现、可自动化的LLM攻击流程，且强调利用模型自身输出作为攻击载体而非注入对抗性token，这是相对于GCG、PAIR等方法的实质性区分点。亮点在于概率层面的机制分析（图4、图5、表3）具有一定理论说服力，不仅报告成功率还给出为什么有效的内在原因。实验覆盖模型多样（7个主流系统）、任务类型丰富（15类），并在AdvBench和HarmBench两个基准上与MSJ、PAIR、CoA、CIA做了定量对比，GPT-4上ASR提升29-61%、Gemini-Pro提升49-71%，数据相对充分。批判性不足：（1）Judge评估本身由GPT-4完成，存在循环依赖——攻击模型与评估模型相同，假阳性/假阴性未能独立量化，Secondary Judge的误差率未给出具体数值；（2）回溯次数上限、对话轮数等超参数对ASR影响较大（图11），但搜索空间未系统探索，结果鲁棒性存疑；（3）防御层面几乎未讨论可行的缓解方案，仅提出用Crescendomation做对齐基准，缺乏对反制策略有效性的实验验证；（4）多轮对话历史在实际部署中常受token限制或会话隔离，攻击的实际可操作性在不同部署配置下未做充分分析。
+
+---
+
+### 47. Refusal Is Not an Option: Unlearning Safety Alignment of Large Language Models
+
+- **会议/年份**: USENIX 2025
+- **作者**: Minkyoo Song, Hanna Kim, Jaehan Kim, Seungwon Shin 0001, Sooel Son
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://doi.org/10.5281/zenodo.15628860
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/song-minkyoo) · [代码](https://doi.org/10.5281/zenodo.15628860) · [DBLP](https://dblp.org/rec/conf/uss/SongKK0S25)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文研究的目标问题是：攻击者能否通过提交"看似合法"的机器遗忘（machine unlearning）请求，系统性地破坏LLM的安全对齐机制。威胁模型设定在MLaaS场景下，服务商接受用户提交的遗忘请求（如删除PII、假新闻、版权内容），攻击者利用这一合法流程将LLM对有害指令的拒绝能力"遗忘"掉，使模型在遗忘操作完成后对恶意查询正常响应。该攻击的严重性在于：被攻击的LLM不仅可被攻击者利用，还会向普通用户传播有害内容；而且攻击所用的遗忘请求本身外表合法，难以区分真实诉求与攻击意图。这是首篇专门研究"对抗性遗忘攻击"可行性的工作，填补了机器遗忘安全研究的重要空白。
+
+**🔧 核心技术**
+论文提出两类攻击方法，核心思路均是构造能让LLM"遗忘其拒绝有害指令能力"的遗忘数据集D*_forget。**场景一（无过滤）**：攻击者向目标LLM提交有害指令，收集其拒绝响应（如"I can't assist with that"），用LLaMA-Guard筛选后形成D_reject，直接作为遗忘请求提交，驱动服务商执行遗忘操作，使模型忘记拒绝行为。**场景二（有过滤器）**：服务商部署针对PII/假新闻/版权内容的自动分类器，攻击者需绕过过滤。方案引入两个LLM代理：Arewrite将D_reject与合法问题内容（如Harry Potter文段）融合生成混合文本，Aeval根据四维评分（原文保留度Sori、内容融合度Scon、语义连贯性Ssem、句法正确性Ssyn）给出反馈；Arewrite依据加权目标函数Stotal=2*Sori+Scon+0.5*(Ssem+Ssyn)迭代优化，最终产出既包含拒绝响应语义、又通过分类器的D*_merged。四种主流遗忘算法（DPO/NPO/TV/GA）均作为服务商侧遗忘方法被实验覆盖。此外论文还提出一种防御方案：训练专用分类器检测遗忘请求中是否嵌入拒绝响应，报告平均召回率92.7%。
+
+**📝 评价**
+**创新性充分**：本文开创了"对抗性遗忘攻击"这一研究方向，攻击思路新颖——不是注入后门触发词，而是精准定位并"遗忘"模型的拒绝机制，且对比实验（Dre ject vs RLHF安全数据/其他模型拒绝响应）有力证明了针对目标LLM提取专属拒绝响应的必要性。**实验设计较为充分**：覆盖2个模型（LLaMA 3B、Phi 3.8B）、4种遗忘算法、3类遗忘内容类型，以及OpenAI GPT-4o微调API的黑盒验证，数据可信度较高；过滤绕过率>96%也具体量化了场景二的威胁。**主要局限一**：实验仅限于小规模指令模型（3B/3.8B），未验证攻击在更大规模或更强安全对齐模型（如Llama-3 70B、Claude系列）上的迁移性，结论的普适性存疑。**主要局限二**：GA遗忘方法在多数情况下导致模型输出"破碎响应"（无限重复词语），被排除在安全性比较之外，这意味着部分极端结论（如111.5倍）依赖于特定遗忘算法组合，作者对此处理略显回避。**局限三**：所提防御（92.7%召回）意味着仍有约7%攻击样本逃逸，在大规模服务场景下仍构成实质威胁，防御部分的研究深度明显弱于攻击部分。整体而言，这是一篇实验扎实、问题定义清晰的安全论文，但模型规模限制和防御方案的初步性是其主要不足。
+
+---
+
+### 48. JBShield: Defending Large Language Models from Jailbreak Attacks through Activated Concept Analysis and Manipulation
+
+- **会议/年份**: USENIX 2025
+- **作者**: Shenyi Zhang, Yuchen Zhai, Keyan Guo, Hongxin Hu, Shengnan Guo, Zheng Fang 0014 等
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/NISPLab/JBShield
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/zhang-shenyi) · [代码](https://github.com/NISPLab/JBShield) · [DBLP](https://dblp.org/rec/conf/uss/ZhangZGHG0Z00025)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+针对已完成安全对齐的LLM所面临的越狱攻击（jailbreak attacks）：攻击者通过精心构造的提示绕过RLHF等对齐机制，使模型输出有害内容。现有防御方法或依赖表面模式检测、或依赖固定拒绝输出，缺乏对越狱机制的系统理解，难以抵御不断演化的攻击手法。威胁模型覆盖五类主流越狱攻击（手工设计、优化型、模板型、语言学型、编码型），场景为白盒开源模型的推理阶段防护，攻击方无需修改模型权重但可控制输入提示。
+
+**🔧 核心技术**
+JBShield基于线性表征假说（LRH），将LLM隐层表征中的高层语义差异形式化为'概念子空间'。具体定义了两类概念：（1）有毒概念（toxic concept）——有害/越狱提示与良性提示的隐层表征差异，以反事实对+截断秩-1 SVD提取主成分向量；（2）越狱概念（jailbreak concept）——越狱提示与有害提示的隐层表征差异，同样通过差分矩阵的SVD提取。检测组件JBShield-D在预先选定的最优层（通过层间余弦相似度最小化定位）上，用30条标定数据构建锚点向量，对测试提示提取对应子空间并计算余弦相似度，双概念同时激活（均超阈值）则判定为越狱输入。缓解组件JBShield-M在检测到越狱后，在前向传播中直接叠加有毒概念向量（增强有毒感知）、减去越狱概念向量（压制顺从倾向），从而在不修改模型权重的情况下引导模型产生安全输出，且输出为针对性的安全回复而非固定拒绝话术。
+
+**📝 评价**
+本文的核心创新在于将越狱机制解释为'双概念激活'的线性叠加现象，并将这一机制理解直接转化为检测与缓解操作，形成理论驱动的防御闭环，这在可解释性上优于现有基于梯度或困惑度的方法。实验覆盖5个模型族、9种攻击、10个基线，数据规模较为充分（32,600条越狱样本），JBShield-D平均F1达0.94、JBShield-M将平均ASR从61%降至2%，结果有说服力。然而存在几个值得关注的局限：第一，标定阶段对每种攻击类型分别构建锚点（Table 4的实验设置明确如此），意味着防御者需要预知攻击类型，泛化到未知攻击需要额外验证，论文对'通用锚点'设置的讨论不够充分；第二，秩-1 SVD的概念表示过于简化，真实语义空间多维且可能存在混叠，论文未分析更高秩时的表现；第三，论文完全未评估自适应攻击（adaptive attack）——攻击者若已知防御者操纵了l_t和l_j层的隐层表征，可针对性地规避概念激活检测，这是此类表征操纵防御的通病；第四，实验仅限于五个开源模型，不适用于闭源商业API，应用场景受限。
+
+---
+
+### 49. Activation Approximations Can Incur Safety Vulnerabilities in Aligned LLMs: Comprehensive Analysis and Defense
+
+- **会议/年份**: USENIX 2025
+- **作者**: Jiawen Zhang 0005, Kejia Chen 0007, Lipeng He, Jian Lou 0001, Dan Li 0032, Zunlei Feng 等
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Kevin-Zh-CS/QuadA
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/zhang-jiawen) · [代码](https://github.com/Kevin-Zh-CS/QuadA) · [DBLP](https://dblp.org/rec/conf/uss/00050H0LFS00025)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+本文研究激活函数近似技术（activation approximation）对已对齐LLM安全性的破坏问题。威胁场景为：LLM开发者完成安全对齐后开源模型，下游服务提供商为降低推理延迟而部署激活多项式化、激活稀疏化、激活量化等近似技术，但这些操作可能在不改变权重的前提下悄然破坏安全护栏，使恶意用户或对抗性越狱攻击成功率从接近0%跃升至70%以上。该问题的重要性在于：现有安全研究主要关注权重量化/剪枝对安全的影响，而激活近似的安全影响此前完全未被系统研究，存在重大盲点；加之私有推理（MPC/FHE）等场景下激活多项式化几乎不可或缺，该风险的实际暴露面极大。
+
+**🔧 核心技术**
+论文分三步推进：(1) 系统安全评估：在10个主流对齐LLM（Llama系列、Phi、Mistral、Qwen等）上对7种激活近似技术进行覆盖ASR、HS、PPL、MMLU的四维评测，揭示激活近似普遍导致安全降级但几乎不影响效用的规律，并将各类误差统一建模为均值为零的高斯分布（εup）和拉普拉斯分布（εdown）。(2) 三大关键观察：安全在效用之前先行崩溃（存在"最脆弱近似"MVA区间）；前若干层对安全损失贡献最大（通过L0范数约束的投影SGD优化定位敏感层，τ=4时ASR已达峰值）；激活近似将有害提示的激活从聚集区域散射至良性区域（MDS可视化验证，余弦相似度从0.52降至0.40）。(3) QuadA防御方案：在DPO对齐损失基础上叠加两项修改——在前τ敏感层注入MVA级别对抗扰动进行前向传播（对抗训练），并在目标函数中加入有害激活余弦相似度聚类正则项，驱使有害样本的激活保持聚集以抵抗近似导致的散射；参考模型设置为原始对齐模型πθ0以隐式约束KL散度防止退化。
+
+**📝 评价**
+创新性上，本文确为激活近似安全影响的首篇系统性研究，补全了LLM推理效率优化安全研究的空白，三大观察的联合提出也为防御设计提供了可追溯的理论依据，属有价值的工作。实验设计较为充分，跨10个模型、7种技术、4个指标的广度尚可，且QuadA在自适应越狱攻击下也进行了评估。然而存在几处值得批判的不足：第一，QuadA需由LLM开发者在预发布阶段集成，而实际上往往是服务提供商单方面部署近似技术，开发者无法预知所有下游近似组合，这一责任边界假设过于理想；第二，余弦相似度聚类项的超参数λ设定缺乏敏感性分析，该组件设计较为直觉化；第三，安全评估的核心指标ASR依赖经二次微调的HarmBench分类器，论文自身也承认其存在假阳性问题，且主要实验是在噪声模拟下进行而非真实部署环境，实际近似场景下的效果存在一定不确定性；第四，论文仅将QuadA应用于2-3个模型做完整展示（受篇幅限制），10个模型的完整QuadA评估结果展示不够全面，泛化性论证略显薄弱。
+
+---
+
+### 50. Topic-FlipRAG: Topic-Orientated Adversarial Opinion Manipulation Attacks to Retrieval-Augmented Generation Models
+
+- **会议/年份**: USENIX 2025
+- **作者**: Yuyang Gong, Zhuo Chen, Jiawei Liu 0002, Miaokun Chen, Fengchang Yu, Wei Lu 0019 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/LauJames/Topic-FlipRAG
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/gong-yuyang) · [代码](https://github.com/LauJames/Topic-FlipRAG) · [DBLP](https://dblp.org/rec/conf/uss/GongC0CY00L25)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+本文针对检索增强生成（RAG）系统中的主题级对抗性舆论操纵威胁。与已有研究聚焦于单一事实查询的投毒不同，本文关注跨多个相关子查询的主题级意见极性操控：攻击者在黑盒场景下，仅能通过查询RAG系统获得响应（含参考文档），通过向知识库注入少量精心构造的中毒文档，使LLM在整个主题查询集上系统性地偏向特定立场（支持或反对）。该威胁在争议性话题（如GMO、医疗政策等）中尤为危险，因为用户对这类话题理解有限，更易受到舆论操控，且现有基于事实核查的防御手段对意见类查询无效。
+
+**🔧 核心技术**
+Topic-FlipRAG是一个两阶段多粒度黑盒攻击流水线。第一阶段（知识引导攻击）：利用GPT-4o-mini从主题查询集中提取K个关键信息节点，分析目标文档中缺失的节点，再通过词汇替换、句子重写、短语插入三粒度编辑策略将这些节点融入目标文档，同时通过极性控制模块确保修改内容符合目标立场；引入动态增强因子t控制编辑幅度，以编辑距离（≤0.2）和语义相似度（≥0.85）为约束进行迭代采样与过滤，最终选取对查询集平均相关性最高的候选文档。第二阶段（对抗触发生成）：以第一阶段输出为基础，借鉴adversarial semantic collision思路，利用开源BERT-MSMARCO神经排名模型的梯度，在连续嵌入空间优化软触发器，再经束搜索离散化为token序列，附加在修改文档末尾；触发生成时在全部主题查询上联合优化平均相关性得分，并结合文档特定增强确保触发器与文档内容紧密对齐。最终中毒文档注入RAG语料库，提升其被检索的概率，进而操控LLM输出极性。
+
+**📝 评价**
+本文的创新性在于将RAG投毒攻击从单查询事实操控扩展到主题级舆论操控，更贴近真实威胁场景，且两阶段设计将语义级内容修改与排名级触发生成有机结合，思路清晰。实验较为充分：覆盖MS MARCO和PROCON两个数据集、三种主流dense retriever（Contriever/ANCE/DPR）、两个LLM（Llama3.1/Qwen2.5），白盒和黑盒迁移设置均有报告，Topic-FlipRAG在RASR、BRank、ASV等指标上均显著优于基线（avg-ASV约0.49，∆ASV约0.25，而PoisonedRAG仅约0.33/0.10），用户实验（54名大学生，极性偏移超16%）提供了一定的现实危害佐证。局限性方面：第一，防御实验（困惑度检测、随机掩码、改写、重排序）仅证明现有方案不足，但未提出有效防御，分析浮于表面；第二，目标文档选取策略（选最不相关的5篇文档）在实际攻击者视角下未必最优，且注入文档数量固定，对注入数量的敏感性分析不足；第三，用户实验规模较小（各组27人），且仅选取两个话题，统计功效存疑；第四，PROCON数据集的子查询由GPT-4o代理生成，与真实用户查询分布存在偏差，可能高估攻击效果；第五，极性分类器采用Qwen2.5-72B，其分类一致性与人工标注的对齐验证不够充分。
+
+---
+
+### 51. PAPILLON: Efficient and Stealthy Fuzz Testing-Powered Jailbreaks for LLMs
+
+- **会议/年份**: USENIX 2025
+- **作者**: Xueluan Gong, Mingzhe Li, Yilin Zhang, Fengyuan Ran, Chen Chen 0115, Yanjiao Chen 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/aaFrostnova/Papillon
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/gong-xueluan) · [代码](https://github.com/aaFrostnova/Papillon) · [DBLP](https://dblp.org/rec/conf/uss/GongLZRCC0L25)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+现有LLM越狱攻击存在三大核心痛点：（1）依赖人工构造或现有越狱模板作为初始种子，可扩展性差；（2）生成的对抗性提示语义不连贯、困惑度高，易被困惑度过滤器检测；（3）提示词过长（部分超300词），导致API调用成本高且容易触发告警。威胁模型为纯黑盒设定：攻击者仅能通过API查询目标LLM并获取响应，无法访问模型权重、logits或训练信息，目标是使经过RLHF对齐的模型输出有害内容。该问题对GPT-4、Gemini-Pro等商业模型的安全性评估具有直接现实意义。
+
+**🔧 核心技术**
+PAPILLON将模糊测试（Fuzz Testing）范式迁移至LLM越狱场景，核心设计包括四点：（1）空种子池初始化+双阶段攻击：pre-jailbreak阶段每个问题尝试若干次（默认10次）直接生成越狱模板，成功则跳过后续阶段节省查询预算；（2）三种问题相关突变算子：Role-play（为目标问题定制角色扮演场景）、Contextualization（为目标问题设定虚构场景背景）、Expand（在已成功模板基础上添加三句与新问题相关的引导句），均由GPT-3.5驱动生成，保证语义连贯性；（3）生成阶段直接限制长度：通过系统提示词约束输出token数（默认200），而非事后压缩，避免压缩导致攻击成功率下降；（4）两级判断模块：先由微调RoBERTa判断是否含违法内容（降低GPT调用成本），仅对RoBERTa标记为恶意的响应再调用GPT-3.5打分（1-10分，≥8分判定为成功越狱），兼顾效率与准确性。种子选择采用MCTS-Explore策略。
+
+**📝 评价**
+创新性方面，将fuzz testing范式与LLM越狱结合并非首创（GPTFuzzer已有类似工作），但PAPILLON的关键差异在于空种子池启动+问题相关突变算子设计，消除了对现有越狱模板库的依赖，这一改进有实际价值。实验覆盖7个模型（含GPT-4、Gemini-Pro等商业模型）和5个baseline，GPT-4攻击成功率达80%+，比baseline高出60%以上，数据较有说服力。然而存在以下局限：（1）突变算子仍依赖GPT-3.5作为helper，攻击成本并未完全消除，且helper本身可能被OpenAI策略限制，鲁棒性存疑；（2）对防御的评估虽涉及多种方案（困惑度过滤、SmoothLLM等），但测试的防御均为静态方案，未评估专门针对语义连贯越狱提示的自适应防御；（3）100 token限制下GPT-4的78% ASR令人印象深刻，但实验中问题集规模（通常为有害问题集子集）和评判标准（GPT评分≥8）的主观性对绝对数字有一定影响；（4）两级判断模块的RoBERTa部分仅检测违法内容而不判断相关性，依赖GPT二级判断存在与越狱攻击场景中helper同源的循环依赖风险。
+
+---
+
+### 52. Private Investigator: Extracting Personally Identifiable Information from Large Language Models Using Optimized Prompts
+
+- **会议/年份**: USENIX 2025
+- **作者**: Seongho Keum, Dongwon Shin, Leo Marchyok, Sanghyun Hong 0001, Sooel Son
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://doi.org/10.5281/zenodo.15638376
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/keum) · [代码](https://doi.org/10.5281/zenodo.15638376) · [DBLP](https://dblp.org/rec/conf/uss/KeumSM0S25)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+本文针对「预训练+微调」部署场景下微调语言模型（如 OpenAI Fine-tuning API 托管的模型）的 PII 泄露威胁。攻击者在黑盒条件下（无法访问微调数据集、无法获取模型权重）仅凭有限的查询次数，尝试从目标模型中尽可能多地提取邮件地址、电话号码和个人姓名等 PII。威胁模型的核心现实意义在于：现有研究要么假设攻击者已拥有有效提示，要么假设其具有完整数据集知识，均不符合实际黑盒攻击场景；而本文填补了「对手如何主动优化提示以最大化 PII 提取」这一知识空白。
+
+**🔧 核心技术**
+Private Investigator 分两阶段运作。第一阶段（提示生成）：利用攻击者自建的代理 LM（可为公开预训练模型或以自有数据微调的版本）对词表所有单 token 进行枚举评估，筛选出 PII 提取率 Top 1% 的候选提示，再以代理 LM 倒数第二层隐状态的余弦相似度为多样性度量，迭代选取上下文分布差异最大化的 20 条提示，兼顾提取效率与上下文覆盖宽度。第二阶段（PII 提取）：设计基于 UCB 思想的提示评分函数 SN(x) = sqrt(ln(N)/nx) − c·PII_Perplexityx，以「被选次数少的探索项」加「已提取 PII 困惑度低的利用项」双目标平衡每轮查询的提示选择，将有限的 100 次提取机会集中于最有可能触发新的已记忆 PII 的提示。整个攻击在黑盒设定下仅需目标模型的置信度向量输出，代理 LM 架构无需与目标 LM 一致。
+
+**📝 评价**
+创新性方面，将 UCB/模糊测试领域的覆盖率优化思路迁移至 PII 提取，并提出代理 LM 上下文多样化选择机制，技术组合有一定新意；以困惑度作为「PII 已被记忆」的代理指标也有理论支撑。实验覆盖 4 个模型×2 个数据集=8 种配置，并与 Carlini 和 Lukas 两套基线的多变体对比，结果较充分，Venn 图和数据级/提示级/模型级多维度归因分析尤为扎实。不足之处有三：一是提示生成阶段仅搜索单 token 提示，搜索空间极为受限，未探索多 token 或语义更丰富的起始提示，这可能解释了 OpenELM 上少数指标不及基线的异常；二是实验对象全为自回归解码器模型，对经 RLHF/指令微调或对话对齐的现代 LLM（如 GPT-3.5/4 的微调版本）是否仍有效未作讨论，泛化性存疑；三是代理 LM 对目标 LM 提示可迁移性的理论依据引用的是 prompt leaking 和 jailbreaking 等异构任务的证据，对同分布迁移的充分性论证略显间接，缺少受控的消融实验直接验证迁移假设。防御实验（DP+数据去重）显示攻击效果被显著压制，这对方法的实用威胁也是一定的反证，但作者仍能在 DP 设定下提取出 700+ 条 PII，说明攻击的鲁棒性仍有参考价值。
+
+---
+
+### 53. We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code Generating LLMs
+
+- **会议/年份**: USENIX 2025
+- **作者**: Joseph Spracklen, Raveen Wijewickrama, A. H. M. Nazmus Sakib, Anindya Maiti, Bimal Viswanath, Murtuza Jadliwala
+- **类别**: benchmark/measurement
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Spracks/PackageHallucinations
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/spracklen) · [代码](https://github.com/Spracks/PackageHallucinations) · [DBLP](https://dblp.org/rec/conf/uss/SpracklenWSMV25)
+- **置信度**: 0.93
+
+**🎯 目标问题**
+本文研究LLM代码生成过程中的「包幻觉」（package hallucination）安全威胁：LLM在生成代码时会推荐根本不存在于PyPI或npm等公开仓库中的虚构包名。攻击者可监测LLM的幻觉输出，抢先在对应仓库注册同名恶意包，当后续用户信任LLM输出并安装该包时即遭入侵，从而实现一种由LLM赋能的新型包混淆供应链攻击。威胁模型中假设攻击者无法篡改模型本身，仅需交叉比对LLM输出与仓库包名列表即可识别可利用的幻觉包。该威胁的严重性在于：已有实证表明虚构包被注册后会被真实用户下载并被纳入其他包的依赖链，形成级联传播效应。
+
+**🔧 核心技术**
+本文构建了迄今最大规模的包幻觉系统性评估框架。提示数据集方面，研究者自建了两套各约9,600条的数据集（Stack Overflow真实问题 + 基于PyPI/npm热门包描述由Llama-2生成的编程任务），并按时间划分为「近一年」和「历史」两份，用于分析训练数据时效性的影响。代码生成方面，对16个商业和开源LLM（含GPT系列、CodeLlama、DeepSeek等）共生成576,000份代码样本。包名提取采用三种启发式方法：①解析代码中的`pip install`/`npm install`命令；②将生成代码重新喂给同一模型询问所需包；③将原始提示重新喂给模型询问所需包。幻觉判定通过与2024年1月10日抓取的PyPI/npm全量包名单比对实现。在此基础上，研究还系统考察了温度参数、解码策略（top-p/k/min-p）、数据时效性对幻觉率的影响，以及RAG、自我反馈检测和监督微调等缓解策略的有效性。
+
+**📝 评价**
+本文最大贡献在于填补了该领域系统性实证研究的空白，规模（576K样本、16模型、2语言）和设计均属首创。商业模型5.2% vs. 开源模型21.7%的幻觉率差距、以及205,474个唯一幻觉包名这一数字，具有强有力的说服力。「43%的幻觉在10次重复查询中每次都出现」这一发现尤为关键，证明了包幻觉的持久性而非随机性，直接增强了攻击的可操作性。然而本文也存在若干值得批判的局限：其一，包名提取方法（尤其启发式2和3）依赖再次询问同一LLM，这本身也可能引入幻觉，导致误报或漏报，但作者未提供精确的提取准确率评估；其二，ground truth（PyPI/npm包名单）已可能被攻击者抢注的恶意幻觉包污染，作者虽承认这一问题并声称结果为下界，但对此未做深入量化；其三，缓解策略部分（RQ5）在所提供全文片段中已被截断，无法评估其实验完整性；其四，研究仅覆盖Python和JavaScript，未讨论Rust、Go等依赖中央仓库的语言的迁移性；其五，研究未设计实际端到端攻击验证实验（仅引用他人博客作为可行性依据），在生态影响量化上有所欠缺。
+
+---
+
+### 54. Mind the Inconspicuous: Revealing the Hidden Weakness in Aligned LLMs' Refusal Boundaries
+
+- **会议/年份**: USENIX 2025
+- **作者**: Jiahao Yu 0001, Haozheng Luo, Jerry Yao-Chieh Hu, Yan Chen 0004, Wenbo Guo 0002, Han Liu 0001 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/sherdencooper/XLLM
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/yu-jiahao) · [代码](https://github.com/sherdencooper/XLLM) · [DBLP](https://dblp.org/rec/conf/uss/0001LHC00025)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+本文针对经过对齐微调（SFT+RLHF）的LLM所建立的安全拒绝机制，揭示其内部"拒绝边界"（refusal boundary）的隐藏脆弱性。威胁模型为：攻击者可向模型输入文本，目标是绕过安全对齐使模型生成有害内容（仇恨言论、虚假信息、违法操作指南等）。其重要性在于：当前主流商业模型（OpenAI、Anthropic、阿里云）均未对EOS token实施过滤，攻击成本极低（仅需拼接特殊token），且可与现有越狱方法叠加使用，极大扩大了攻击面。
+
+**🔧 核心技术**
+核心方法BOOST极为简洁：在原始有害提示后附加n个EOS token（如</s>），构造x'=[x, eos×n]。其机制解释为"上下文分割"（context segmentation）：EOS token在微调时是表示序列终止的必要控制符，多个EOS token会使模型将输入视为多个独立片段，打断对完整有害意图的整体识别，导致有害提示的隐藏表示向拒绝边界漂移（通过t-SNE可视化第-10层验证）。关键创新在于：EOS token的注意力值远低于GCG对抗后缀等token，因此不会分散模型对原始有害内容的注意力，实现了"静默越狱"。此外，作者设计了针对商业API的EOS探测方法，通过构造"Can you repeat {eos} once?"查询来检测token是否被过滤，并进一步提出基于演化算法的EOS混淆（obfuscation）和动态位置插入策略以对抗简单过滤防御。
+
+**📝 评价**
+创新性中等偏高：将EOS这类被忽视的控制token作为攻击向量是具有实际洞察力的发现，"上下文分割"概念的提出有理论依据支撑（隐空间可视化+贝叶斯解释）。实验覆盖面广，16个开源模型×8种越狱方法的组合测试具有说服力，对Llama-2系列的ASR提升超30%结果显著。但存在若干明显局限：其一，商业模型评估因预算受限仅测试了GPT-4omini和Qwen-max两个模型，且只与GPTFuzzer组合，结论的普适性存疑；其二，评估指标精度仅92%（关键词+LLM二次校验），对于安全攻击论文来说误差偏高，可能系统性高估ASR；其三，EOS token数量对成败敏感（例如5个有效但6个失败），作者通过1-19次穷举搜索规避了此问题，但这本身也使攻击实用性打折；其四，t-SNE可视化在低维度下可能失真，作者将其作为主要机制证据略显不严谨；其五，所提防御建议（输入过滤、加固拒绝边界）较为浅显，缺乏具体实现与验证，防御侧贡献薄弱。
+
+---
+
+### 55. I Know What You Said: Unveiling Hardware Cache Side-Channels in Local Large Language Model Inference
+
+- **会议/年份**: USENIX 2025
+- **作者**: Zibo Gao, Junjie Hu, Feng Guo, Yixin Zhang, Yinglong Han, Siyuan Liu 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/gao-zibo) · [DBLP](https://dblp.org/rec/conf/uss/GaoHGZHLLL25)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+本文针对本地部署的大语言模型（LLM）推理过程中存在的硬件缓存侧信道漏洞展开研究。威胁场景为：攻击者在受害者机器上运行一个无特权的间谍应用，通过flush+reload等缓存侧信道技术，被动监听与LLM推理进程共享的CPU缓存访问模式，从而泄露受害者与本地LLM交互的输入文本（用户提示）和输出文本（模型响应）。该问题的重要性在于：用户选择本地LLM的主要动机正是规避云端隐私风险，而本文揭示本地部署同样面临严峻的硬件层面隐私威胁，且此前该攻击面完全未被研究。攻击者无需与受害者LLM直接交互，无需特权，且可绕过操作系统进程隔离。
+
+**🔧 核心技术**
+核心漏洞利用两点LLM推理特性：(1) token embedding操作本质上是对嵌入矩阵W的查表访问，导致密钥依赖的内存访问模式，攻击者可通过缓存命中推断被访问的token索引；(2) 自回归解码的串行时序特性使输出token的生成时间点可被精确区分，从而泄露输出token的顺序。针对两大挑战：C1（缓存侧信道的假阳性/假阴性噪声导致token列表不完整）采用功率谱密度（PSD）分析解码阶段时序信号的周期性，合成训练数据集，并微调LLMA（基于LoRA）将含噪token列表与时序信号联合重建输出文本；C2（预填充阶段输入token并行计算导致顺序打乱）则利用LLM输入输出间的上下文依赖关系，将乱序输入token集合与已重建的输出文本拼接后，微调LLMB恢复输入文本顺序。整个攻击框架为端到端的被动窃听，不依赖对受害者模型的探测，并通过针对Intel Raptor Lake微架构Array-of-Pointers（AoP）预取器的专项规避策略解决了flush+reload在新硬件上精度接近零的问题。
+
+**📝 评价**
+本文的创新性在于首次将缓存侧信道攻击扩展至LLM本地推理场景，并将经典的秘密依赖内存访问模式与LLM自回归时序信号相结合，设计出跨模态（时序+文本）的攻击框架，这一思路具有较强原创性。实验覆盖了llama.cpp、HuggingFace transformers、Intel IPEX-LLM等多个主流框架以及Llama、Gemma、Falcon、Mistral、Phi等5款热门模型，输出重建的Levenshtein相似度平均达94.8%、语义余弦相似度98.7%，实验数据翔实有说服力。通过100名Prolific用户调研建立φ>0.77的攻击成功判定阈值，是难得的用户研究设计。不足之处：(1) 威胁模型要求攻击者能在受害者机器上执行任意代码并调用clflush指令，实际门槛并不低，对于沙盒化应用场景（如浏览器隔离、iOS限制）的适用性未深入讨论；(2) 输入重建在长提示（如SQuAD2数据集，平均180+ token）时性能骤降（LS仅32-34%），论文未充分分析根本原因与改进路径；(3) 合成数据集训练的LLMA/LLMB是否在分布外场景（如专业领域提示）仍有效尚不明确；(4) 论文仅在单一硬件平台上进行主要实验，跨平台泛化性的讨论较为简略，缓解措施部分亦停留在建议层面，缺乏定量验证。
+
+---
+
+### 56. TracLLM: A Generic Framework for Attributing Long Context LLMs
+
+- **会议/年份**: USENIX 2025
+- **作者**: Yanting Wang 0001, Wei Zou, Runpeng Geng, Jinyuan Jia 0001
+- **类别**: framework/system
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/Wang-Yanting/TracLLM
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/wang-yanting) · [代码](https://github.com/Wang-Yanting/TracLLM) · [DBLP](https://dblp.org/rec/conf/uss/WangZG025)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+本文解决长上下文 LLM 的「上下文溯源」问题：给定一个 LLM 输出，如何定位上下文中（文档、RAG 检索结果、网页等）对该输出贡献最大的具体文本片段。威胁场景包括两类：一是攻击者向上下文注入恶意指令的提示注入攻击（Prompt Injection），二是向 RAG 知识库投毒的知识污染攻击（如 PoisonedRAG）。现实意义在于：攻击发生后，防御方需要对已成功的攻击做事后取证分析，找出引发有害输出的根本文本来源，而现有特征归因方法在长上下文场景下效率极低或准确度不足。
+
+**🔧 核心技术**
+核心设计是三层技术叠加：(1) 信息引导搜索算法：将 n 个文本片段递归分组，对每组整体计算贡献分数，保留 top-K 组并剪掉其余，再细分保留组，迭代至每组仅剩单文本；查询 LLM 的令牌复杂度从直接 Shapley 的 O(n²·e·L) 降至 O(K·e·L·n)，当 K≪n 时效益显著。(2) 贡献分数去噪（Contribution Score Denoising）：Shapley 的 Monte Carlo 估计对所有置换取平均，但当被溯源文本依赖与其他文本的组合才能产生贡献时，大量置换下的边际贡献趋近零而稀释均值；本文只对最高 β%（默认 20%）的边际贡献分数取平均，抑制噪声置换干扰。(3) 贡献分数融合（Contribution Score Ensemble）：分别用 STC、LOO、Shapley 运行 TracLLM，对每个文本取三种方法中的最大分数作为最终集成分数，利用不同方法在不同场景下的互补性提升整体覆盖率。此外，论文在博弈论框架（一致性博弈/存在性博弈）下给出理论保证：在满足特定假设时，TracLLM 结合 Shapley 可证明地识别出导致输出的文本集合。
+
+**📝 评价**
+创新性集中在效率优化策略上：将特征归因问题转化为树形剪枝搜索确有实际价值，在长上下文场景下将计算成本从千秒级压缩到数百秒级是工程上的有意义进步。然而批判性地看，存在如下问题：第一，表1(a) 中提示注入场景下 TracLLM 与 STC 指标完全持平（均为 0.94/0.77），但计算成本高出近 100 倍（403s vs 4.2s），这表明 TracLLM 的增益主要体现在知识污染场景，对于简单的单段注入攻击，廉价的 STC 已经足够，而这一分裂现象在论文主体中未获得充分正视。第二，信息引导搜索的贪婪剪枝策略存在漏洞：若两段关键文本分别落入不同的被剪掉的子树，且单独的组贡献分数都不高（需要二者组合才能引发输出），则双方均可能被错误剪除，而论文的理论分析仅针对精确 Shapley（非层次剪枝版）建立保证，实际算法并不满足该理论前提。第三，理论分析所依赖的「一致性博弈」和「存在性博弈」假设极为理想化——真实 LLM 的语言生成不满足 Definition 1/2 的严格二值函数形式，导致 Proposition 1 的实用指导意义有限，更多是形式上的自洽。第四，实验中上下文规模实际较小（最多 50 段 RAG 文本），未验证百万级 Token 窗口下的行为，对「long context」的覆盖仍停留在数万词级别。
+
+---
+
+### 57. EmbedX: Embedding-Based Cross-Trigger Backdoor Attack Against Large Language Models
+
+- **会议/年份**: USENIX 2025
+- **作者**: Nan Yan 0001, Yuqing Li 0001, Xiong Wang 0006, Jing Chen 0003, Kun He 0008, Bo Li 0001
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❌ 否
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/yan-nan) · [DBLP](https://dblp.org/rec/conf/uss/0001L000025)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对大型语言模型（LLM）的后门攻击问题，特别关注现有单触发器攻击在多样化用户群体中的局限性。威胁模型为恶意LLM提供者通过模型分享平台（如Hugging Face）发布含后门的模型，不同语言文化背景的用户群体对同一触发词的敏感度不同，导致单触发器攻击效果不稳定。核心挑战是：当需要为不同用户群体设置多个触发器时，传统基于离散token的方法面临巨大计算开销与灾难性遗忘问题，且多触发器的语义重叠会导致误触发，严重削弱攻击隐蔽性。
+
+**🔧 核心技术**
+EmbedX的核心创新是以连续嵌入向量替代离散token作为"软触发器"（soft trigger），将触发器优化从离散token空间迁移到可微分的连续嵌入空间。具体分三阶段：（1）软触发器生成：冻结LLM参数，仅优化嵌入向量φ，使其在语义空间中与目标输出对齐，同时用ℓ2约束控制扰动幅度，并加入鲁棒性正则项；（2）潜在对抗后门注入：利用离散小波变换（DWT）分析发现有毒样本在频域和梯度域存在可检测差异，因此设计频率损失（KL散度）和梯度损失（ℓ2范数差）双重约束，使有毒样本的潜在表征向干净样本靠拢，提升隐蔽性；（3）跨触发器激活：对任意新token，仅需优化其嵌入向量与软触发器对齐（约0.5秒），无需重新训练模型，从而实现高效的多触发器切换，解决灾难性遗忘问题。
+
+**📝 评价**
+EmbedX的主要创新点在于将软触发器引入跨触发器后门攻击场景，并结合频域和梯度域双约束提升隐蔽性，这一设计逻辑清晰且有一定原创性。实验覆盖4个LLM、5个数据集、6种语言和10类语言风格，跨触发器切换速度优势极为显著（0.5秒 vs 基线428-1360秒），ASR接近100%，实验设计较为充分。然而，论文存在若干局限：（1）跨触发器场景的威胁模型假设攻击者对嵌入层有完全修改权限，但现实中通过API部署的闭源模型无法实施此类嵌入层直接修改，适用范围有限；（2）软触发器方案需要攻击者在推理阶段仍能替换特定token的嵌入向量，这一前提在实际黑盒API服务中难以成立，论文对此讨论不足；（3）防御评估相对薄弱，仅在论文截取部分中提及LFD/LGD指标，但未深入比较对STRIP、Neural Cleanse等主流后门检测方法的抗性；（4）对"软触发器与干净样本嵌入差异被检测"的问题，双约束虽有所缓解，但KL散度约束本身在大批量数据下的效果稳定性未得到充分验证。
+
+---
+
+### 58. Exploiting Task-Level Vulnerabilities: An Automatic Jailbreak Attack and Defense Benchmarking for LLMs
+
+- **会议/年份**: USENIX 2025
+- **作者**: Lan Zhang 0002, Xinben Gao, Liuyi Yao, Jinke Song, Yaliang Li
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/zhang-lan) · [DBLP](https://dblp.org/rec/conf/uss/0002GYSL25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对LLM的越狱攻击提出了一种任务级漏洞利用方案。威胁模型为黑盒访问场景：攻击者仅需目标LLM和辅助LLM的API接口，无需模型内部知识。核心威胁在于：现有基于特定提示词或token的越狱手法可被重对齐（realignment）修补，而本文攻击作用于任务本身的知识结构层面，理论上不依赖任何固定提示模板，因此对重对齐具有更强的抗性。其重要性在于，该攻击生成的有害内容不仅更难防御，而且因多轮聚合响应而信息更丰富、粒度更细，实际危害程度更高。
+
+**🔧 核心技术**
+本文提出KDA（Knowledge Decomposition based Attack）：利用'良性任务与恶意任务共享底层知识'这一洞察，将一个恶意任务通过辅助LLM递归分解为一棵子任务树，直至每个叶节点子任务的风险度低于目标LLM的拒绝阈值。具体流程分四阶段：(1)直接尝试执行原始恶意任务；(2)用meta-prompting将任务改写为'what型'知识询问以隐藏恶意意图，引导辅助模型给出子步骤或具体化方向；(3)将子任务逐一交给目标模型执行，失败则递归分解；(4)聚合所有子任务结果，由GPT-4判定是否构成成功越狱。算法以递归函数形式实现，树的最大深度可配置以控制开销。与以往单次查询不同，多轮聚合使最终结果更加详尽。此外，基于同一分解机制，本文构建了含7931条提示、覆盖0-6六个风险等级的越狱评测基准，由GPT-4、Claude 2.1、Gemini Pro三模型联合打分。
+
+**📝 评价**
+创新点在于将攻击粒度从'提示/token层'提升至'任务知识层'，绕开了重对齐的修补路径，这一思路有一定理论价值且经过了预实验验证（热力图展示分解后风险分布下降）。实验数据方面，KDA在llama2-7b-chat和GPT-3.5-turbo上分别达到96%和94%的ASR，比SOTA提升约10%，且比较了PAIR、AutoDAN等多个基线，覆盖了14个LLM，数量尚算充分。然而存在几处明显不足：第一，抗重对齐能力的核心论断缺乏严格实验验证，文中仅定性论述而无专项重对齐后再测试的对照实验，说服力不足；第二，评判器大量依赖GPT-4，而GPT-4同时又充当辅助模型，形成一定的循环依赖，评估客观性存疑；第三，攻击的API调用成本（多轮递归）在论文中未作系统量化，实用性评估不完整；第四，基准中风险评分由三个LLM主观打分加总，评分标准仍较粗粒度（每模型仅0/1/2三档），对边界模糊情形的判断可靠性需进一步论证。
+
+---
+
+### 59. Effective PII Extraction from LLMs through Augmented Few-Shot Learning
+
+- **会议/年份**: USENIX 2025
+- **作者**: Shuai Cheng, Shu Meng, Haitao Xu 0002, Haoran Zhang, Shuai Hao 0001, Chuan Yue 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/cheng-shuai) · [DBLP](https://dblp.org/rec/conf/uss/ChengM0ZHYMHZL25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对LLM训练数据中嵌入的个人身份信息（PII）泄露威胁，研究如何在不依赖越狱或微调接口的前提下高效提取LLM记忆的PII。威胁模型分为两类：非定向提取（面向特定职业人群的大规模PII收割）和定向提取（针对具体目标个人）。随着LLM被大规模训练于包含真实姓名、邮箱、电话的网络数据集，攻击者可将其作为低成本PII数据库加以利用，直接支撑鱼叉式网络钓鱼、骚扰等下游攻击，危害极为具体。现有方法存在成功率低、依赖平台微调接口或生成大量虚假信息等致命缺陷，本文恰好针对这些短板展开。
+
+**🔧 核心技术**
+核心方法是"增强型少样本学习"PII提取框架，由两个互补模块组成。其一为非定向场景的"基于在线学习的少样本样例选择"：攻击者以公开爬取的非训练集PII作为初始候选池，通过在线学习动态维护每条PII的优先级权重（特征为词嵌入+两个质量标签if_in_training和hit_rate），在每轮查询后以二元交叉熵损失更新权重向量，并将LLM吐出并经在线搜索验证属实的新PII替换初始非训练集样例，使候选池逐渐由非训练PII向in-training PII演化，直接激活模型的记忆能力；位置加权反馈机制进一步放大prompt末尾样例的影响权重。其二为定向场景的"提示链式查询增强"：先用LLM生成目标人物的描述、邮箱域名及电话区号等辅助信息，再将其与少样本样例拼接为增强查询，多步推理后输出目标邮箱或电话。全流程无需微调接口、无需越狱技巧，仅通过正常API调用实现攻击。
+
+**📝 评价**
+创新点在于将在线学习反馈循环引入少样本样例选择，并设计"以LLM输出喂养LLM"的自举机制（用验证过的in-training PII替换初始样例），理论动机清晰且实验结果有力支撑：非定向攻击ASR达48.9%，每条真实PII成本仅0.012美元，8000次查询提取3912人的PII，规模与成本均优于现有工作。实验覆盖GPT-3.5/4/4o与Claude-3.5四个主流闭源模型以及四类职业，并含消融研究和参数敏感性实验，完整度较高。主要局限有三：一是验证真实性完全依赖在线搜索，对已下线或从未上网的PII（如数据泄露来源的信息）无法有效核实，存在系统性低估攻击真实成功率的风险；二是非定向攻击需预知目标职业且初始种子PII质量直接影响效果，实际攻击面有所限制；三是论文聚焦于攻击侧，防御建议（如差分隐私训练、遗忘机制）几乎停留在展望层面，对防御者的指导价值有限。此外，验证体系中<name,email>对赋予负反馈（-1）的处理方式存在争议——邮件地址若被LLM正确推断仍属隐私泄露，与论文声称的"任何模型输出的真实PII均来自训练数据"有内在矛盾，未作深入讨论。
+
+---
+
+### 60. PrivacyXray: Detecting Privacy Breaches in LLMs through Semantic Consistency and Probability Certainty
+
+- **会议/年份**: USENIX 2025
+- **作者**: Jinwen He, Yiyang Lu, Zijin Lin, Kai Chen 0012, Yue Zhao 0018
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ❌ 否
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/he-jinwen) · [DBLP](https://dblp.org/rec/conf/uss/HeLL0025)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+LLM在推理阶段的隐私泄露检测问题：经过私有数据微调的LLM可能记忆并泄露PII（个人可识别信息），但现有隐私提取攻击（如越狱、数据提取）无法验证所提取信息的准确性。由于GDPR/HIPAA等法规限制，公开私有数据集几乎不存在，导致推理时无法通过外部参照集进行交叉验证。本文的威胁模型涵盖攻击方（提取并验证私密信息真实性）和防御方（部署方审计模型输出），两者均面临在无法访问训练数据情况下判断输出是否泄露真实私密信息的挑战。
+
+**🔧 核心技术**
+PrivacyXray通过分析LLM内部状态（hidden states）来检测隐私泄露。其核心观察是：当LLM正确生成私密信息时，其内部表示呈现出更高的语义一致性（semantic coherence）和概率确定性（probabilistic certainty）。技术上，框架将中间层隐藏状态通过模型的unembedding矩阵映射为各层的token概率分布，并从中构建四类特征度量：(1) 层间语义相似度（inter-layer，用cosine相似度衡量相邻层间top-k token embedding的一致性）；(2) 层内语义相似度（intra-layer，同一层内相邻排名token embedding的相似度）；(3) 层级top-k概率分布；(4) 句级概率统计（min/max/mean）。四路子网络（InterNet基于Transformer、IntraNet基于CNN+BiLSTM、TopKProbNet基于CNN、ProbNet基于全连接层）分别处理上述特征后融合分类。此外，由于缺乏公开私有数据集，框架使用Faker库结合GPT-4生成涵盖16类PII的40万条合成数据，并以LoRA微调被测LLM以模拟真实场景。
+
+**📝 评价**
+本文的核心观察——LLM正确生成私密内容时内部表示更一致、更确定——具有一定的新颖性，将成员推断攻击（MIA）的思路从输出层概率延伸到多层内部表示，并首次针对语义等价的隐私泄露（而非精确字符串匹配）进行建模，这是较有价值的区分。实验设计较为全面，覆盖5个主流LLM、多种基线方法（MIA、幻觉检测、成员推断），平均精度92.69%、AUC 0.9753，且评估了数据规模、微调策略、泛化性和迁移性等因素，这在同类工作中并不多见。然而，本文存在几处值得质疑的局限：第一，合成数据（Faker+GPT-4）与真实私有数据分布可能存在显著差距，模型在合成数据上的高性能不能充分证明实际部署的有效性，文中仅提及在"手工收集的私有数据集"上进行小范围验证，细节不够充分；第二，四类核心度量中的inter-layer和intra-layer相似度、以及layer-level概率需要白盒访问权限，这在云端API场景下不可行，框架的实际适用范围受限于白盒设定；第三，检测模型本身的训练依赖标注好的"正确/错误"私密输出，而获取这些标注在实际场景中仍是一个bootstrap难题，论文未充分讨论这一循环依赖；第四，论文所声称的"20.06%平均提升"是相对于多个基线的加权平均，与最强基线SAR（88.27%）相比仅约4.42个百分点，叙述存在一定的夸大嫌疑。
+
+---
+
+### 61. When LLMs Go Online: The Emerging Threat of Web-Enabled LLMs
+
+- **会议/年份**: USENIX 2025
+- **作者**: Hanna Kim, Minkyoo Song, Seung Ho Na, Seungwon Shin 0001, Kimin Lee
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://zenodo.org/doi/10.5281/zenodo.13691327
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/kim-hanna) · [代码](https://zenodo.org/doi/10.5281/zenodo.13691327) · [DBLP](https://dblp.org/rec/conf/uss/KimSN0L25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文研究配备网络工具的LLM智能体被滥用于以个人数据为核心的网络攻击风险。威胁模型为：攻击者仅需极少量初始输入（如大学名称或目标邮件地址），即可驱动LLM智能体自动化实施三类攻击——PII批量收集、冒充目标人物生成社交媒体帖子、以及高度定制化的鱼叉式钓鱼邮件生成。该威胁的严峻性在于攻击门槛极低：单次攻击成本约2美分、耗时约10秒，且全程无需人工干预。更值得警惕的是，互联网上广泛公开的个人信息为攻击提供了充足的"弹药"，而现有商业LLM的安全防护机制在智能体场景下往往失效。
+
+**🔧 核心技术**
+作者构建了两类LLM智能体：WebSearch Agent（调用Google Custom Search API获取搜索结果片段）和WebNav Agent（额外集成Selenium与BeautifulSoup，支持页面内容抓取及可点击元素导航，实现多层网页深度探索）。整个攻击流水线通过LLM的function calling特性驱动，LLM自主决策工具调用时机与参数，无需人工反馈。PII收集针对QS前十大学CS系教授（570名）及学生，采集姓名、邮件、电话、办公地址、个人主页5类信息，经人工标注评估。冒充帖子生成使用简单角色扮演提示词绕过安全护栏，以三个LLM（GPT/Claude/Gemini）多数投票作为评判器，并与人工评估交叉验证（一致率85-93%）。鱼叉钓鱼邮件评估设计了7种变体（不同模型、是否开启搜索、不同发件方机构），通过60名真实参与者的问卷研究衡量点击意愿。核心发现之一是：仅仅启用网络工具本身便可意外充当越狱手段，使原本会拒绝有害请求的LLM转为顺从执行。
+
+**📝 评价**
+本文最具价值的贡献是实证揭示了"工具集成即越狱"这一反直觉的安全弱点——网络工具的加入不仅提升攻击效果，还破坏了LLM自身的安全对齐，这是此前文献较少系统记录的现象。实验数据相对充分：WebNav GPT在邮件收集上达95.9%精确率，Claude收集535.6条PII信息；冒充帖子LLM评判器设置了人工对照验证，方法论可信度较高；钓鱼邮件研究有60名真实参与者参与，点击率提升达46.67%。然而局限也较为明显：第一，攻击目标高度同质化（以公开信息极为丰富的学术圈CS研究者为主），对信息较隐蔽的普通用户或其他行业的泛化能力未经验证；第二，鱼叉钓鱼评估采用问卷模拟而非真实邮件投递，点击率来自参与者的主观表态而非真实行为，生态有效性存疑；第三，论文聚焦于攻击能力揭露，未提出具体可操作的防御建议或缓解方案，对防御方的指导意义有限；第四，实验基于2024年7月版本的模型，LLM安全机制快速迭代，部分绕过结论的时效性有待持续跟进。
+
+---
+
+### 62. TwinBreak: Jailbreaking LLM Security Alignments based on Twin Prompts
+
+- **会议/年份**: USENIX 2025
+- **作者**: Torsten Krauß, Hamid Dashtbani, Alexandra Dmitrienko
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/krauss) · [DBLP](https://dblp.org/rec/conf/uss/KraussDD25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对开源LLM的安全对齐机制（RLHF等训练出的拒绝有害请求能力）展开白盒越狱攻击研究。威胁模型假设攻击者已完全下载目标模型（白盒访问），目标是在保留模型通用能力的前提下彻底移除安全对齐，而非仅在单次交互中绕过。随着LLaMA、Qwen等高质量开源模型日益普及，此类攻击具有实际危害性——攻击者只需有限算力即可将安全模型改造为无限制版本，随后大规模分发。现有白盒方法要么依赖大规模数据集与高计算开销（梯度优化类），要么大范围修改参数导致模型能力退化（粗粒度剪枝/微调类），本文正是针对这两大痛点提出改进。
+
+**🔧 核心技术**
+TwinBreak将LLM安全对齐类比为深度神经网络中的后门（backdoor），安全机制相当于针对有害提示触发的「隐藏功能」，借鉴图像域的NeuralCleanse思路通过剪枝移除。核心创新在于引入「孪生提示（Twin Prompts）」：为每个有害提示手工构造一个语法结构和内容高度相似但无害的配对提示，通过对比两者在MLP的Gate层和Up层产生的激活差异来精确定位「安全相关参数」。同步地，利用两组无害提示对比识别「功能参数（utility parameters）」并将其排除出剪枝范围，以保护模型通用能力。算法采用迭代式剪枝（固定5轮，每轮剪枝1%参数），原因在于安全参数间存在相互依赖，需逐步暴露。此外，激活收集仅需生成第一个输出token（而非完整响应），并分析最后6个token位置的激活值，以降低计算量。最终推理时仅用剪枝模型生成前50个token，随后切回原模型完成响应，兼顾成功率与质量。配套发布的TwinPrompt数据集包含100对孪生提示，基于HarmBench手工构造。
+
+**📝 评价**
+创新性方面，将安全对齐类比后门并用剪枝移除的思路有一定新颖性，孪生提示实现低噪声参数定位是有价值的设计，但「安全对齐等价于后门」这一核心假设在论文中缺乏严格的理论论证，更多依赖经验类比，说服力有限。实验覆盖面较广，跨5家厂商16个模型（1B–72B），在4个基准数据集上报告ASR，验证了较强的泛化性，ASR普遍达89%~98%，属于当前最高水平，且运行时间对7B模型仅需5分钟以内，实用性良好。然而实验存在若干不足：效用评估（OpenBookQA、ARC等）仅报告了4个典型模型的结果，对剪枝后的真实能力退化程度缺乏更全面的量化分析；LlamaGuard3作为ASR评测器被作者自己指出存在误报和漏报问题，但对此依赖过重，未对评测器偏差做充分的误差分析；TwinPrompt数据集虽声称将公开，但正文中未提供仓库链接，且100条提示的手工构造规模较小，其质量与多样性对结果影响未做消融研究。此外，本文未讨论任何针对TwinBreak的防御措施或检测方法，以及其对已有防御机制（如模型水印、参数完整性校验）的有效性，这在安全研究中是一个显著缺口。
+
+---
+
+### 63. Unsafe LLM-Based Search: Quantitative Analysis and Mitigation of Safety Risks in AI Web Search
+
+- **会议/年份**: USENIX 2025
+- **作者**: Zeren Luo, Zifan Peng, Yule Liu, Zhen Sun 0001, Mingchen Li, Jingyi Zheng 等
+- **类别**: benchmark/measurement
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/luo-zeren) · [DBLP](https://dblp.org/rec/conf/uss/LuoPL0LZ025)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对AI驱动搜索引擎（AIPSEs）在处理含恶意URL的查询时产生有害响应的安全风险进行系统量化。威胁模型为：攻击者通过SEO优化或发布恶意网页，使AIPSE检索并直接引用钓鱼、恶意软件、诈骗等站点内容，用户甚至在使用良性关键词查询时也可能受害。论文以2024年真实事件（开发者因ChatGPT Search引用假冒Solana API网站损失约2500美元）为动机，说明这一威胁已在生产系统中造成实际经济损失。七款主流AIPSE（ChatGPT Search、Perplexity、Copilot、Grok、Kimi等）均在测试中被证实存在此类风险，研究具有直接现实意义。
+
+**🔧 核心技术**
+研究从PhishTank、ThreatBook、LevelBlue收集恶意URL，经手工交叉验证后构建100条评估条目，并生成三类查询：关键词列表查询、URL直接查询、自然语言查询。响应中的URL被分为main（直接引用恶意URL）、warning（引用但附警告）、source（仅出现在来源列表）、none四类风险级别。实验由4人在5天内完成以保证时效性，并用多个威胁检测平台辅助标注。防御方面提出两种策略：基于prompt的代理LLM过滤，以及更有效的agent-based防御——包含GPT-4.1内容精炼工具和HtmlLLM-Detector URL检测工具，agent迭代调用两个工具直至收集足够信息后生成带安全标注的修订响应。此外还开展两项案例研究：构建虚假Web3平台文档（含恶意API密钥窃取代码）和钓鱼网站，验证攻击可行性。
+
+**📝 评价**
+本文是首个对生产级AIPSE进行系统性安全量化的工作，填补了此方向的空白，实用价值较高。三类查询设计合理，自然语言查询普遍降低风险、URL直接查询显著放大风险的发现具有重要实践指导意义。然而评估集仅100条样本，覆盖面偏小，且数据采集窗口较短（约1个月），URL有效性随时间快速衰减，可重复性存疑。案例研究仅在Perplexity一个平台上测试8个基础模型，未在其余六款AIPSE上复现，结论外推性有限。防御方面的78.3%主风险消减率和F1=0.822数据尚可，但信息损失约10.7%的代价估算方式不够精确，且防御完全依赖GPT-4.1和外部检测服务，引入了新的可信任链风险和成本问题。与TSE的对比实验中，作者在收集AIPSE数据之前已向各平台举报了恶意URL，导致比较基准存在信息不对称，AIPSE的安全表现可能被人为美化。
+
+---
+
+### 64. Prompt Obfuscation for Large Language Models
+
+- **会议/年份**: USENIX 2025
+- **作者**: David Pape, Sina Mavali, Thorsten Eisenhofer, Lea Schönherr
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/pape) · [DBLP](https://dblp.org/rec/conf/uss/PapeMES25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+系统提示词（system prompt）被视为LLM服务提供商的核心知识产权，但现有防护机制均可被精心构造的提示注入攻击绕过，导致提示词逐字泄露（已发生于Microsoft Bing、Copilot、Notion等数千商业工具）。威胁模型假设攻击者具有黑盒查询访问权，目标是窃取系统提示词以复制模型行为或获取内部机密。现有防泄露思路陷入"猫鼠游戏"，本文转换思路：即使提示词被窃取，也让其无法被解读或复用。
+
+**🔧 核心技术**
+本文提出"提示词混淆"（Prompt Obfuscation），核心是在提示空间中寻找碰撞：构造一个混淆提示sobf，使其对预定义用户查询集U产生与原始提示s相同的输出，同时自身不包含任何可还原原始内容的信息。设计了两种变体：（1）硬提示混淆——在离散Token空间用GCG算法迭代优化随机初始化的token序列，损失函数为CE+KL散度，结合窗口化策略利用上下文信息；（2）软提示混淆——在连续嵌入空间直接优化嵌入向量ˆsobf，利用嵌入空间到token空间逆映射的困难性保证不可解读性，使用Adam梯度下降优化，比离散优化更高效。混淆过程仅需一次性开销和代表性训练样本，无需额外标注数据。
+
+**📝 评价**
+创新点在于将软提示优化技术重新定位为IP保护工具，思路从"防泄露"转向"让泄露后的内容无价值"，视角转换有一定新意。软提示混淆的实验数据较为扎实：在8项指标上全面优于空白基线并与原始提示相当（多项甚至超过原始），与LoRA微调效果几乎持平，且通过三类反混淆攻击验证了黑盒和一类白盒场景下的安全性。然而局限性相当显著：（1）软提示方案要求对模型嵌入层的白盒访问权，意味着仅适用于自托管开源模型（如Llama），对于商业LLM API完全无法部署，实用范围受限；（2）硬提示混淆明显失败——Table 2显示混淆提示与原始提示的Jaccard相似度远高于随机基线（Full场景0.22 vs 0.00），作者也坦承攻击者"有可能重构原始提示"，该方案实际上未达到混淆目标；（3）白盒攻击中能提取到单词的结果被作者轻描淡写为"不切实际"，但在系统被完全入侵（获取模型权重+嵌入表示）的场景下这并非不可能；（4）反混淆攻击评估较为基础，缺少针对软提示的专门优化逆向攻击或大规模查询对比攻击，安全性上限未经充分探索。
+
+---
+
+### 65. Exposing the Guardrails: Reverse-Engineering and Jailbreaking Safety Filters in DALL·E Text-to-Image Pipelines
+
+- **会议/年份**: USENIX 2025
+- **作者**: Corban Villa, Muhammad Shujaat Mirza, Christina Pöpper
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/villa) · [DBLP](https://dblp.org/rec/conf/uss/VillaMP25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+DALL·E 等商业级黑盒文本生成图像（T2I）系统的安全过滤机制从未被公开记录，形成"安全即混淆"的防护策略。攻击者若能绕过过滤器，可借助 DALL·E 每日 3400 万张图像的生成规模制造高拟真度的有害内容（深度伪造、CSAM、仇恨图像等），危害远超开源替代方案。现有红队研究仅针对 Stable Diffusion 等开源模型，无法解释 DALL·E 2/3 多阶段级联过滤器的具体架构与差异，亦无法评估其对低资源语言或语义否定等新型攻击的鲁棒性。
+
+**🔧 核心技术**
+论文提出基于响应时间的侧信道分析（timing side-channel）来对 DALL·E 的黑盒过滤器进行逆向工程：通过对原始词与变体词（如 naked→n4ked）的响应时延分布对比，发现 DALL·E 2 存在 0.25 秒以内触发的 blocklist，以及耗时更长的 CLIP 相似度二级过滤器。针对 DALL·E 3，利用 ChatGPT 接口的信息泄露漏洞（浏览器侧可截获被静默传输的 revised prompt 流及 DALL·E 工具错误消息），结合信息增益算法确定 4.8 秒分类阈值（F1=0.99），将 LLM 提示词修订阶段与图像生成阶段精确区分，并识别出早期文本过滤器（content policy 错误均出现在阈值前）与后期图像分类器（dalle issue 错误均出现在阈值后）。在此逆向工程基础上，论文发展出两类新型越狱攻击：一是低资源语言攻击（LRL），利用 RLHF 对低频语言对齐不足的缺陷，以夏威夷语、意第绪语等发送有害提示绕过安全过滤；二是否定式越狱攻击，利用 DALL·E 3 的 LLM 语义理解与 CLIP 嵌入空间之间的不一致性，通过"请勿生成 X"等否定句使修订后的提示保留危害主题，同时绕过 LLM 层面的拒绝。
+
+**📝 评价**
+本文的核心创新在于将时间侧信道分析引入 T2I 安全过滤器逆向工程，据称是该方向的第一篇工作，思路新颖且可操作性强。信息泄露漏洞（ChatGPT 静默流式传输内部 revised prompt 及错误代码）的发现具有实际意义，且已向 OpenAI 负责任披露。多语言数据集的构建（27 种语言、3402 条提示）以及 Toxicity Theme Similarity 与 Toxicity Absolute Change 两个量化指标的设计也显示出对实验严谨性的关注。然而，论文存在若干明显局限：第一，越狱攻击的量化成功率未在摘要与正文前半部分给出（论文被截断，无法获取完整的 LRL/否定攻击成功率数据），相比 SneakyPrompt 的 57.15% 基线，本文缺乏同等精度的数字对比；第二，时序侧信道分析高度依赖当前 API 基础设施的响应特征，OpenAI 可通过引入固定延迟或噪声加扰轻易消除该信道，攻击的持久性存疑；第三，系统提示泄露实验本质上是已知的 prompt injection 问题，并未提出新机制；第四，研究仅针对 DALL·E 2/3 两个特定时间快照，随模型迭代结论可能快速失效，泛化性受限。
+
+---
+
+### 66. Game of Arrows: On the (In-)Security of Weight Obfuscation for On-Device TEE-Shielded LLM Partition Algorithms
+
+- **会议/年份**: USENIX 2025
+- **作者**: Pengli Wang, Bingyou Dong, Yifeng Cai, Zheng Zhang, Junlin Liu, Huanran Xue 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/wang-pengli) · [DBLP](https://dblp.org/rec/conf/uss/WangDCZLXWZZ25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对「TEE屏蔽LLM分区（TSLP）」场景中权重混淆方案的安全性展开研究。TSLP将LLM的计算密集型层卸载到不可信GPU、仅将轻量层保留在TEE中，并依赖权重混淆防止攻击者从GPU侧读取的混淆权重中还原私有模型。论文指出，所有现有轻量级混淆方案（SOTER、ShadowNet、TransLinkGuard等8项工作）均基于逐向量操作（置换+缩放），本质上无法改变权重向量的方向，从而暴露出可被利用的「方向相似性」漏洞。该威胁场景高度现实：攻击者仅需拥有设备级内存/总线访问权限（honest-but-curious用户），并能获取公开预训练模型，即可发动攻击，而TSLP恰是业界正在推广的轻量化TEE保护方案。
+
+**🔧 核心技术**
+本文提出攻击方法ARROW MATCH与防御方案ARROW CLOAK，两者均围绕「向量方向」这一核心概念设计。ARROW MATCH分两阶段：S1（基于方向距离的方向恢复）利用混淆模型权重向量与公开预训练模型权重向量之间的余弦距离，通过匈牙利式最近邻匹配逆向还原置换矩阵Π；S2（基于学习的向量长度调整）先用预训练向量长度比值估计缩放系数，再以极少量标注数据（<1%）微调初始化模型得到代理模型。ARROW CLOAK则在混淆层引入矩阵-向量乘法（复杂度O(nl)）：将Wvic的列向量线性组合为掩蔽向量v，再将v以随机系数叠加到每个权重列上，从而彻底打乱向量方向；解密时TEE只需做一次矩阵-向量乘法X·v即可还原，复杂度与现有方案相当。论文还将ARROW CLOAK形式化规约到LWE（Learning with Errors）难题，通过K-S检验和标准差分析验证误差矩阵满足LWE安全参数要求，提供了可证明安全的理论支撑。
+
+**📝 评价**
+本文的核心洞察——「轻量级混淆因逐向量操作无法改变方向，且微调后LLM权重方向与预训练模型高度对齐」——简洁有力，实验数据充分支撑（正确对的方向距离比次近邻小77×以上）。攻击实验覆盖4个模型、7个数据集、5种防御方案，ARROW MATCH的代理模型性能与无保护白盒攻击相当（仅差1.67×/1.70×之比），对所有现有方案均构成实质性破解，说服力强。ARROW CLOAK的方向混淆效果（距离提升961×）和推理延迟改善（2.83× vs Shield-Whole）也均在真实Intel SGX设备上验证，工程可信度较高。主要局限在于：①实验模型最大仅GPT2-XL（1.5B），对LLaMA-7B/13B等现代边缘模型缺乏验证，扩展性存疑；②LWE规约依赖于Wpre-Wvic呈近似高斯分布的经验假设，对RLHF对齐或全参数SFT后偏离预训练权重较大的模型，该假设可能失效；③S1的匹配精度依赖公开预训练模型与受害模型基础权重的高度一致，若模型采用多阶段预训练或私有基础模型则攻击效力下降，论文对此讨论不充分；④ARROW CLOAK引入的随机向量v在每次重新混淆时更新，但密钥管理与周期性更新的安全性分析较为简略。总体而言，这是一篇兼具攻防完整性和实验扎实性的工作，对TSLP方向有直接贡献，但大模型场景的泛化性需进一步验证。
+
+---
+
+### 67. SelfDefend: LLMs Can Defend Themselves against Jailbreaking in a Practical Manner
+
+- **会议/年份**: USENIX 2025
+- **作者**: Xunguang Wang, Daoyuan Wu, Zhenlan Ji, Zongjie Li, Pingchuan Ma 0004, Shuai Wang 0011 等
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/wang-xunguang) · [DBLP](https://dblp.org/rec/conf/uss/WangWJL00L0LR25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+本文针对 LLM 越狱攻击（Jailbreak）问题，攻击者通过构造恶意提示绕过安全对齐，迫使模型输出有害内容。威胁模型为黑盒访问场景，攻击涵盖五大类：人工构造、基于优化（GCG 等）、基于生成（PAIR/TAP 等）、间接（DrAttack/Puzzler）和多语言越狱。现有防御方案存在三大痛点：无法覆盖全部攻击类型、引入显著延迟（需等待响应生成后再检测），以及依赖白盒访问而不兼容闭源模型，导致难以实际部署。
+
+**🔧 核心技术**
+SELFDEFEND 受传统计算机安全中"影子栈（shadow stack）"防御缓冲区溢出的启发，在 LLM 推理层面建立一个与目标模型并发运行的影子 LLM 实例（LLMdefense），两个实例同时接收用户输入。目标模型正常生成 token，而影子模型使用两套精心设计的检测提示（Pdirect：直接识别违规片段；Pintent：基于 CoT + 少样本 ICL 推断真实意图）并发检测，一旦影子模型输出"No"则目标模型释放缓存响应，否则触发检查点拒绝请求。为降低成本并避免对 GPT-4 的依赖，论文通过 GPT-4 对 Anthropic 红队数据集（38,961 条）进行知识蒸馏，生成带标注的 Ddir 和 Dint 数据集，再用 LoRA 对 Llama-2-7b 进行参数高效微调，得到专用防御模型。该防御模型在 SELFDEFEND 框架下保护 GPT-3.5/4、Claude、Llama-2、Mistral 等六款目标 LLM。
+
+**📝 评价**
+创新性上，将影子栈概念迁移至 LLM 防御是一个有新意的类比，并发执行检测而非串行等待响应是减少延迟的实际工程贡献；双层防护（目标模型安全对齐 + 影子模型检测）的组合也有一定设计价值。实验覆盖较全面，对 10 种主流越狱方法、6 款目标 LLM 进行测试，并与 7 种基线防御横向对比，数据显示调优后的小模型可接近 GPT-4 级别防御效果（平均 ASR 降至 0.05 量级），延迟开销基本可忽略（正常查询 95% 以上零延迟）。然而存在几处明显局限：1）间接攻击（DrAttack）在 GPT-3.5 下 ASR 仍高达 0.71，表明对语义隐晦的越狱效果有限，论文对此解释不够充分；2）防御模型训练数据仅为英文（Anthropic 红队数据），但论文声称对多语言越狱同样有效，其泛化依据存疑；3）方案本质上需要运行两个 LLM 实例，在大规模部署时算力成本翻倍，仅用"延迟可忽略"来回避成本问题并不充分；4）ASR 评估依赖关键词匹配拒绝语句，对能绕过拒绝词汇的攻击（如强迫模型以不含拒绝词的方式回答）可能低估真实 ASR；5）自适应攻击评估部分仅在附录简述，缺乏对白盒自适应场景的系统分析。
+
+---
+
+### 68. Make Agent Defeat Agent: Automatic Detection of Taint-Style Vulnerabilities in LLM-based Agents
+
+- **会议/年份**: USENIX 2025
+- **作者**: Fengyu Liu, Yuan Zhang 0009, Jiaqi Luo, Jiarun Dai, Tian Chen, Letian Yuan 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/liu-fengyu) · [DBLP](https://dblp.org/rec/conf/uss/Liu0LDCYYSLZ0025)
+- **置信度**: 0.85
+
+**🎯 目标问题**
+本文针对的核心问题是LLM-based Agent中的污点式漏洞（taint-style vulnerabilities）：开发者过度依赖LLM输出，未对其进行充分清洗便直接传入安全敏感操作（如eval、SQL执行、subprocess等），导致攻击者可通过精心构造的提示词让恶意载荷流入敏感操作，实现代码注入、SQL注入、SSRF等高危攻击。威胁场景分为远程攻击者（通过Web API输入恶意提示词控制服务器）和本地攻击者（在本地设备上利用高权限Agent进行提权）。该问题之所以重要，在于LLM-based Agent已商业化部署于AutoGPT、Dify等平台，存储大量用户数据，一旦被利用后果极为严重。现有静态分析方案（如LLMSmith）因Python动态特性（间接调用）导致误报、漏报率高，缺乏可验证PoC。
+
+**🔧 核心技术**
+AgentFuzz是首个针对LLM Agent的定向灰盒模糊测试框架，包含三个阶段：第一，LLM辅助种子生成——静态提取每个sink调用点的调用链，利用调用链中类名/方法名所携带的自然语言语义，通过one-shot learning+CoT推理引导LLM生成功能特定的种子提示词；第二，多维反馈驱动的种子调度——将种子质量拆解为语义分数（LLM评估执行轨迹与目标调用链的语义对齐度）、距离分数（执行轨迹到sink的CFG最短路径，使用反比函数建模）、惩罚分数（避免局部收敛）三项加权线性组合，优先变异综合分最高的种子；第三，sink引导的种子变异——功能变异器利用LLM自改进机制迭代调整提示词语义（附带历史变异记忆），参数变异器则采用concolic execution+Z3约束求解，通过运行时子串匹配（Prompt-to-Argument Mapping）定位提示词中需修改的数据部分，确保组件参数满足到达sink的路径约束。漏洞oracle覆盖OWASP Top 10中的多类sink（代码注入、命令注入、SSRF、SSTI等）。
+
+**📝 评价**
+AgentFuzz最突出的贡献是将定向灰盒模糊测试工程性地迁移到LLM Agent这一新型软件范式，在20个真实开源Agent应用上发现34个0-day漏洞（23个获CVE编号），精度声称100%，比LLMSmith高33倍，工程影响力显著。多维反馈设计中将语义评分引入种子调度，是区别于传统CFG距离的实质创新，对含大量间接调用的Python代码尤为有效。不过存在几项值得关注的局限：其一，仅评估20个Agent，样本量偏小，且全部为提供Web服务的开源应用，结论能否推广至闭源或本地部署场景存疑；其二，精度100%（无误报）的声明虽亮眼，但召回率（漏洞覆盖率）数据披露有限，34个漏洞中有多少是真实可利用的总量中的什么比例不清楚；其三，整个框架的语义评分和种子生成均依赖外部LLM（温度设0），引入了LLM API成本和非确定性，工程可复现性存疑，性能开销也未充分量化；其四，静态调用链提取仍受限于Python动态特性，间接调用处距离记为无穷大的处理方式是权宜之计而非根本解决，可能遗漏深层调用链中的sink；其五，论文文本在关键评估章节被截断，无法全面评价实验细节与对照组设计的完整性。
+
+---
+
+### 69. Cloak, Honey, Trap: Proactive Defenses Against LLM Agents
+
+- **会议/年份**: USENIX 2025
+- **作者**: Daniel Ayzenshteyn, Roy Weiss, Yisroel Mirsky
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/ayzenshteyn) · [DBLP](https://dblp.org/rec/conf/uss/AyzenshteynWM25)
+- **置信度**: 0.82
+
+**🎯 目标问题**
+本文针对 LLM 驱动的自主渗透测试代理（如 PentestGPT、PenHeal、AutoAttacker）被恶意行为者用于大规模自动化攻击的威胁场景。攻击者模型是一个配备 Kali Linux 工具套件的 Multi-LLM 自主智能体，目标是在无人干预条件下获取网络主机的 root 权限。当前防御研究几乎全部聚焦于传统威胁行为者，没有针对 LLM 代理固有弱点的专属防御方案。规模化自动攻击会极大压缩防御响应窗口，因此需要一种主动、预置型的防御范式。
+
+**🔧 核心技术**
+论文提出 Cloak-Honey-Trap 三层防御框架，系统利用 LLM 的 7 类结构性漏洞（训练偏置、对不可信输入的盲目依赖、上下文窗口限制、DFS 搜索倾向、幻觉、特殊字符敏感性、对齐约束），共设计 6 个战术和 15 项技术。Cloak 通过植入虚假日志/版本号或注入 Unicode 退格符（U+0008）等不可见字符遮蔽关键资产；Honey 利用"非对称 Unicode 字符"（Set A 对 LLM 可见对人类不可见，Set B 反之）构造 LLM 专属蜜标，通过 SSH 密码差异检测智能体身份，实验显示部分字符对 GPT-4o、Gemini、Claude、Llama 的检测率均达 100%；Trap 包含循环陷阱（三文件互引导致 GPT-4o 在 8 轮后开始幻觉）、"token 地雷"（少量罕见 token 序列使 Llama-3.1-70B 输出乱码）、触发对齐拒绝（SSH banner 注入无关危险问题），以及无需提示注入即可诱导 LLM 代理在其自身终端执行反向 Shell 的社会工程手法。在 11 台 CTF 靶机上以黑盒假设取得 100% 防御成功率，并开源了自动部署工具 CHeaT。
+
+**📝 评价**
+创新性方面，将 LLM 漏洞从攻击工具反转为防御武器的视角是真正的贡献，LLM 专属蜜标（利用 Unicode 非对称性区分人类与 LLM 访问者）和无提示注入逆向 Shell 诱导均属首创。然而实验设计存在显著局限：CTF 靶机是人为设计的教学环境，其结构性简单与真实企业网络的复杂性差距巨大，100% 成功率在此语境下说服力有限。使用 PurpleLlama 作为判别 LLM 评估防御成功率会引入判别偏差，且防御成功的标准（信息进入 K 即算成功）与攻击是否真正被阻断存在语义落差。Token 地雷对 Llama/Mistral 等开源模型有效，但论文对闭源模型（GPT-4o、Gemini）的同类效果未提供足够数据。全文在第 6 节评估部分被截断，无法审阅完整的量化实验结果和自适应对手评估数据，这是本次分析的重要盲区。此外，框架假设防御者可自由修改目标系统的文件/日志/配置，但在实际生产环境中这种部署权限本身就是重要前提条件，论文对此讨论不足。
+
+---
+
+### 70. Mirage in the Eyes: Hallucination Attack on Multi-modal Large Language Models with Only Attention Sink
+
+- **会议/年份**: USENIX 2025
+- **作者**: Yining Wang, Mi Zhang 0001, Junjie Sun, Chenyue Wang, Min Yang 0002, Hui Xue 0001 等
+- **类别**: attack
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ✅ 是 — https://huggingface.co/RachelHGF/Mirage-in-the-Eyes
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/wang-yining) · [代码](https://huggingface.co/RachelHGF/Mirage-in-the-Eyes) · [DBLP](https://dblp.org/rec/conf/uss/Wang0SW00TD025)
+- **置信度**: 0.78
+
+**🎯 目标问题**
+多模态大语言模型（MLLM）存在幻觉问题——生成与视觉内容不符的错误对象、属性或关系。本文将幻觉问题从被动缺陷升级为主动攻击面：攻击者可通过精心构造视觉对抗输入，主动诱发模型产生幻觉输出，对下游安全关键应用（如自动驾驶、医疗影像理解）构成威胁。威胁模型覆盖黑盒场景及商业API，攻击面广泛且现实可行。
+
+**🔧 核心技术**
+论文核心机制基于对MLLM内部注意力机制的分析，聚焦于'注意力汇聚（attention sink）'现象——即模型注意力在特定token上过度集中，导致视觉token被忽略，从而与图文相关性脱钩。攻击方法通过操控attention sink行为构造对抗性视觉输入，使模型在生成阶段倾向于依赖语言先验而非视觉内容，进而产生幻觉。区别于固定扰动模式的传统对抗方法，该方案动态生成对抗样本，在不显著降低响应流畅性的前提下实现高迁移性攻击。实验在6个主流MLLM上验证，并在GPT-4o、Gemini 1.5等闭源商业API上取得正向结果。
+
+**📝 评价**
+创新点明确：将attention sink与幻觉攻击结合是有价值的机制解释路径，为对抗样本设计提供了内部动因而非纯粹梯度驱动，理论逻辑较以往工作更具可解释性。实验覆盖6个模型及商业API，黑盒迁移性结果若属实则说明攻击具备实际威胁价值。然而，仅凭摘要无法评估幻觉诱发率的基线对比是否公平，以及'不牺牲响应质量'的量化标准是否严谨。潜在局限：attention sink是否是幻觉的充分原因仍有争议，论文结论可能过度依赖相关性而非因果；此外，商业API实验细节（查询次数、成功率绝对值）未在摘要中披露，难以独立复核。代码已开放于HuggingFace，可复现性较好，但缺乏防御侧的系统性讨论是一个明显缺口。
+
+---
+
+### 71. Malicious LLM-Based Conversational AI Makes Users Reveal Personal Information
+
+- **会议/年份**: USENIX 2025
+- **作者**: Xiao Zhan, Juan Carlos Carrillo, William Seymour, Jose Such
+- **类别**: attack
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://www.usenix.org/conference/usenixsecurity25/presentation/zhan) · [DBLP](https://dblp.org/rec/conf/uss/ZhanCSS25)
+- **置信度**: 0.62
+
+**🎯 目标问题**
+本文研究一类新型威胁：被刻意设计为窃取用户隐私信息的恶意LLM聊天机器人（Malicious CAI）。威胁模型是：攻击者通过精心构造的系统提示（system prompt）控制ChatGPT等LLM，使其在对话中主动诱导用户披露个人信息，而用户误以为自己在使用普通的GenAI助手。该威胁场景重要性在于：CAI的社交化、拟人化特征天然降低用户防范意识，且攻击无需代码漏洞，门槛极低，现有隐私保护机制几乎无法覆盖此类"社会工程型"AI攻击。
+
+**🔧 核心技术**
+研究者构建了多款基于不同系统提示策略的恶意CAI（以及作为对照的良性CAI），策略差异主要体现在如何利用隐私的社会性本质（social nature of privacy）、互惠性话术、情感拉近等手段诱导信息披露。实验采用随机对照试验（RCT）设计，招募502名参与者与不同CAI进行真实对话，量化比较各版本CAI所提取到的个人信息数量与类型，并通过问卷采集参与者的主观风险感知。关键发现是：利用隐私社会性策略的恶意CAI提取到的个人信息显著多于良性基线，且该策略在降低用户感知风险方面同样最为有效，形成"高攻击效果+低感知威胁"的危险组合。
+
+**📝 评价**
+本文的核心贡献是将"恶意系统提示驱动的隐私窃取型CAI"作为独立攻击面进行首次系统性用户实验，RCT设计和502人样本量在同类HCI/安全交叉研究中属较高水准，具有一定说服力。'社会性隐私策略最有效且感知风险最低'这一发现具有实践警示意义，揭示了当前以用户认知为防线的隐私保护思路的根本缺陷。局限方面：仅凭摘要无法评估系统提示的具体设计细节，攻击策略的分类体系是否穷尽、是否有理论框架支撑尚不清楚；参与者是否为招募的志愿者（存在样本偏差）、对话场景是否够真实均未知；此外论文主要是现象描述与用户研究，缺少针对此类攻击的检测或防御方案，'actionable recommendations'的实质落地性存疑。整体而言是重要的问题定义性工作，但技术深度有限。
+
+---
+
+## IEEE Symposium on Security and Privacy (S&P)
+
+### 72. Fun-tuning: Characterizing the Vulnerability of Proprietary LLMs to Optimization-Based Prompt Injection Attacks via the Fine-Tuning Interface
+
+- **会议/年份**: SP 2025
+- **作者**: Andrey Labunets, Nishit V. Pandya, Ashish Hooda, Xiaohan Fu, Earlence Fernandes
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/earlence-security/fun-tuning
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00121) · [代码](https://github.com/earlence-security/fun-tuning) · [DBLP](https://dblp.org/rec/conf/sp/LabunetsPHFF25)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+本文针对闭源专有大语言模型（如 Google Gemini）面临的优化型提示注入攻击威胁。传统的灰盒攻击依赖推理接口返回的 logprobs 信息，但主流 LLM 厂商已逐步限制或取消这一信息的暴露，导致此类攻击被削弱。本文发现微调接口（Fine-Tuning API）暴露的训练损失值可作为 logprobs 的代理信号，攻击者只需拥有普通开发者账号即可利用该接口对闭源模型发动优化型对抗提示搜索。在以 LLM 为核心的智能体系统中（如邮件/日历助手、代码分析工具），成功的提示注入可劫持模型行为，导致用户数据泄露或工具被恶意滥用，威胁场景现实且严峻。
+
+**🔧 核心技术**
+攻击的核心洞察是：将学习率设为极小值（约 10^-45 量级）时，微调接口不会实质性更新模型权重，但仍返回训练损失值；该损失与目标令牌的平均 logprobs 存在线性关系（R² 随输出长度增加趋近于 1），可用作离散优化的代理目标函数。技术难点之一是 Gemini API 对训练集施加了随机排列置换：作者设计了一种「渐进损坏输出」的去随机化方法，通过构造损失值单调递增的训练集来恢复固定置换 σN（误差约 7-8%），并将该置换复用于后续所有优化迭代。攻击流程借鉴 GCG/NeuralExec 等白盒方法的贪心坐标搜索框架，每次迭代通过批量提交候选 token 替换方案给微调 API，根据返回损失选取最优 token 替换位置和值，在现有手工提示注入触发词的前后拼接优化前缀/后缀，形成「增强型」注入载荷。整套攻击每个样本需约 90 次微调调用，全部实验成本低于 10 美元。
+
+**📝 评价**
+本文创新性在于将已有的离散对抗优化技术迁移到此前被认为无法攻击的闭源模型上，通过滥用微调接口打通了新的攻击通道，是一次清晰的攻击面发现与刻画工作。实验设计较为严谨：对损失函数进行了逆向工程验证（R² 分析、候选排名分布实验），对去随机化方法与暴力正确方法进行了对比，并在 PurpleLlama 工业级基准上报告了 65%（Gemini-1.5-Flash）至 82%（Gemini-1.0-Pro）的攻击成功率。不足之处在于：实验对象仅限 Google Gemini 一家，对 OpenAI、Anthropic 等其他厂商微调接口的可迁移性尚未验证，使得「通用威胁」的结论偏强；Google 在披露后仅通过约束学习率下限和最小批量大小即有效缓解了该攻击，说明防御成本较低，攻击窗口期有限；此外，本文对「排名相关性」的论证仅针对短输出时训练损失的噪声容限做了近似分析，在实际攻击成功率上高度依赖 PurpleLlama 原始触发词本身的效力，算法本身的独立贡献与基线未作完整消融（仅与随机替换对比）。总体而言，这是一篇工程性强、责任披露规范的攻击论文，但其安全影响已随厂商修复而大幅降低。
+
+---
+
+### 73. Alleviating the Fear of Losing Alignment in LLM Fine-tuning
+
+- **会议/年份**: SP 2025
+- **作者**: Kang Yang, Guanhong Tao 0001, Xun Chen, Jun Xu 0024
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/kangyangWHU/LLMAlignment
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00171) · [代码](https://github.com/kangyangWHU/LLMAlignment) · [DBLP](https://dblp.org/rec/conf/sp/Yang0CX25)
+- **置信度**: 0.95
+
+**🎯 目标问题**
+LLM安全对齐（alignment）在微调过程中会被破坏，无论微调数据是否包含有害样本。本文观察到，即便使用完全干净数据集微调，Mistral 7B等模型的有害率也会从11.7%上升到21.3%；注入1500条有害样本后，所有模型有害率超过50%。威胁模型覆盖两种场景：平台方（如OpenAI）对用户提交数据集进行微调（Scenario I），以及开源模型被善意第三方微调后意外破坏对齐（Scenario II）。现有预处理审核（moderation）无法彻底解决问题——最优的GPT-4o审核仍遗漏392/1500条有害样本，剩余有害样本仍可将Gemma等模型有害率推至20%-50%。该问题的重要性在于：对齐训练成本极高，而微调成本极低，存在严重的安全不对称性。
+
+**🔧 核心技术**
+论文核心洞察是：对齐LLM内部存在两个可计算的'方向'——对齐方向（∆aligned）和有害方向（∆harmful），其定义为在指定隐层Ldir上，对一批相同属性提示词的最后一个token隐状态取平均。通过实验证明，将有害问题的隐状态向∆aligned推近、向∆harmful推远，可将对齐模型有害率从~0提升至45%-82%，证实了这两个方向对对齐行为的决定性。恢复方法设计为：以负余弦相似度为损失函数，衡量原始对齐模型与微调模型之间∆harmful的差异；用反向传播计算梯度，通过FGSM准则筛选出梯度方向指向原始权重的参数，从原始模型复制其权重（每轮仅恢复0.2%的权重，迭代20轮）；Ldir默认设于网络2/3深度处以平衡效果与效率。为防止任务性能退化，引入回滚机制：先做5轮预热恢复，若任务性能下降超5%则启用回滚——回滚通过恢复∆aligned方向来撤销对任务性能有害的权重修改（回滚比例R%=20%）；若热身阶段通过则继续无回滚恢复并设置性能熔断器。
+
+**📝 评价**
+创新性方面，利用'方向'（direction）概念解释对齐机制并将其用于恢复，是一个有机制解释力的设计，比RESTA直接叠加safety vector更有针对性；结合FGSM的权重选择与回滚机制在实践上也具有较好的工程价值。实验规模在该领域较为充分，125个微调模型（5模型×5数据集×5微调配置）覆盖了干净与污染两类场景，有害率从33.25%降至1.74%，任务性能平均仅下降2.93%，优于SoftSFT和RESTA的帕累托前沿。然而存在若干明显局限：第一，方法依赖对原始对齐模型权重的完全访问，不适用于GPT-4o等闭源API场景，适用范围受限；第二，Scenario I（平台方恢复）中rollback被明确禁用（因平台方无法评估任务性能），导致在该场景下对任务性能保护明显更弱，这一妥协在论文中处理得较为草率；第三，评估用有害率基准（BeaverTails 700条问题）与恢复数据集（同源BeaverTails）存在分布上的相关性，可能高估泛化能力——对分布外有害问题（如越狱变体、多语言有害查询）的鲁棒性未做测试；第四，论文未评估对抗性场景，即知晓该恢复方法的攻击者是否可设计更难被恢复的微调策略（adaptive attack），这是防御方法评估的重要缺口；第五，Ldir设于2/3位置是经验性的超参，其跨架构的稳定性需要更系统的消融。
+
+---
+
+### 74. Prompt Inversion Attack Against Collaborative Inference of Large Language Models
+
+- **会议/年份**: SP 2025
+- **作者**: Wenjie Qu 0001, Yuguang Zhou, Yongji Wu, Tingsong Xiao, Binhang Yuan, Yiming Li 0004 等
+- **类别**: attack
+- **分析依据**: 📄 全文
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00160) · [DBLP](https://dblp.org/rec/conf/sp/0004ZWXYLZ25)
+- **置信度**: 0.92
+
+**🎯 目标问题**
+本文针对LLM协同推理（collaborative inference）场景中的隐私威胁。协同推理要求多个参与者各持模型部分层，通过网络传递中间激活值完成推理；恶意参与者可静默记录接收到的激活值，事后尝试逆向还原上游用户的原始输入提示词。输入提示词往往包含姓名、联系方式等个人敏感信息，或具有商业价值的高质量提示，泄露后果严重。现有嵌入逆向攻击方法在面对LLM深层非线性时效果极差（如[29]在Llama-7B的4层激活上准确率接近0），该场景的隐私风险至今无系统性研究。
+
+**🔧 核心技术**
+论文提出两阶段攻击流水线——约束优化（Constrained Optimization）与自适应离散化（Adaptive Discretization）。第一阶段直接在连续嵌入空间做梯度下降（规避[29]基于softmax的梯度消失问题，论文用Theorem 1从理论上证明该消失现象的固有性），并在目标函数中引入基于嵌入矩阵的下界约束项，迫使优化变量收敛至合法token嵌入邻域，从而过滤远离真值的无意义局部极小值。第二阶段利用LLM masked attention机制的性质（Theorem 2证明该方案理论最优）实现激活校准，逐位贪心选取使激活距离最小的token；为降低枚举复杂度，从O(|V|)加速至只搜索constrained optimization给出的Top-K近邻候选集；对语义模糊的功能词（如介词、标点）额外引入辅助LLM的语义推测集合加以补全。对于LoRA微调的灰盒场景，采用交替优化策略：固定LoRA参数时执行白盒PIA恢复token，固定token时梯度下降估计LoRA参数，迭代进行。
+
+**📝 评价**
+创新性较强：论文是首个系统研究LLM协同推理隐私威胁的工作，白盒攻击在Llama-65B（4参与者最难设置）上达到88.4% token准确率，比最佳基线22.8%有决定性提升，实验数字有说服力。理论贡献是亮点：梯度消失的上界证明（Theorem 1）和激活校准理论最优性（Theorem 2）为方法设计提供了坚实依据，而非纯粹经验驱动。不足方面：（1）防御实验过于单薄，仅测试高斯噪声（σ=1下仍有79.5%准确率），未涉及差分隐私、安全多方计算、激活压缩等更具实践价值的防御机制，难以给系统设计者提供充分指导。（2）语义推测引入了额外的辅助LLM，其可用性假设及计算开销（每个token需多次前向推理）的实际影响在论文中讨论不足。（3）灰盒交替优化缺乏理论收敛保证，且对LoRA rank、层数等超参数的敏感性分析不够系统。（4）威胁模型假设攻击者长期静默记录激活而不被检测，在部署了流量审计的平台上现实性存疑，实际攻击窗口的讨论有所欠缺。
+
+---
+
+### 75. DataSentinel: A Game-Theoretic Detection of Prompt Injection Attacks
+
+- **会议/年份**: SP 2025
+- **作者**: Yupei Liu, Yuqi Jia, Jinyuan Jia 0001, Dawn Song, Neil Zhenqiang Gong
+- **类别**: defense
+- **分析依据**: 📄 全文
+- **是否开源**: ✅ 是 — https://github.com/liu00222/Open-Prompt-Injection
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00250) · [代码](https://github.com/liu00222/Open-Prompt-Injection) · [DBLP](https://dblp.org/rec/conf/sp/LiuJ0SG25)
+- **置信度**: 0.88
+
+**🎯 目标问题**
+LLM集成应用（如AI搜索、智能体）面临提示注入攻击威胁：攻击者将恶意指令嵌入外部数据，使后端LLM执行攻击者指定任务而非原始目标任务。现有检测方法（包括最先进的已知答案检测）对自适应攻击的假阴率（FNR）高达21%，假阳率（FPR）也存在误报问题，根本原因是检测LLM未经专项训练且未考虑自适应攻击场景。本文的威胁模型假设强白盒攻击者，可访问后端LLM、检测LLM及检测指令模板，仅不知道随机生成的密钥。
+
+**🔧 核心技术**
+DataSentinel将检测LLM的微调建模为极小极大优化问题（minimax optimization）：内层max问题用GCG梯度算法优化注入提示的分隔符z，使其同时绕过检测LLM并诱使后端LLM执行注入任务；外层min问题则用标准梯度下降更新检测LLM参数，使其对被优化的自适应攻击样本输出不含密钥（低FNR），对干净数据输出含密钥（低FPR）。两个子问题交替迭代求解。关键设计洞察反直觉：故意将检测LLM训练得"更脆弱"于提示注入，从而提高注入内容的可检测性——当含注入的输入进入检测LLM时，它更倾向跟随注入指令而不输出密钥，从而触发检测。内层优化为降低计算开销，约束xc=xt||z||se||xe，仅优化通用分隔符z而非整个污染数据。
+
+**📝 评价**
+创新点在于将对抗训练范式引入提示注入检测，并提出"主动增加漏洞"这一反直觉防御思路，概念新颖且有一定理论支撑。实验规模较大：7类任务×49种目标-注入组合、9种已有攻击+3种自适应攻击、6个LLM、6个基线方法，FPR和FNR结果接近0的表现令人印象深刻。但存在以下局限：1）内层优化仅优化分隔符z而非全局xc，导致实际对抗攻击强度低于真实白盒攻击者，即便论文承认这一点，但该设计削弱了其对强适应攻击的鲁棒性主张；2）当注入任务与目标任务相同时（退化为传统对抗样本场景），作者明确承认DataSentinel有效性下降，这是一个重要的覆盖盲区；3）全文截断前尚未展示与KAD的完整对比数据，核心竞争结果不完整；4）方法依赖对后端LLM的梯度访问，在实际API-only部署场景中适用性存疑，且不同LLM之间迁移效果虽有声称但尚需更系统验证。
+
+---
+
+### 76. GPTracker: A Large-Scale Measurement of Misused GPTs
+
+- **会议/年份**: SP 2025
+- **作者**: Xinyue Shen 0001, Yun Shen, Michael Backes 0001, Yang Zhang 0016
+- **类别**: benchmark/measurement
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ✅ 是 — https://github.com/TrustAIRLab/GPTracker
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00118) · [代码](https://github.com/TrustAIRLab/GPTracker) · [DBLP](https://dblp.org/rec/conf/sp/0001S0Z25)
+- **置信度**: 0.82
+
+**🎯 目标问题**
+OpenAI GPT Store中大规模滥用GPT应用的安全问题此前缺乏系统性研究。攻击者通过发布违规GPT（涉及非法活动、网络钓鱼、恶意软件分发等十类禁止场景）绕过平台审核机制，对终端用户造成实质危害。该问题的重要性在于：GPT Store已成为AI应用分发的重要渠道，一旦被滥用可形成规模化的AI辅助犯罪基础设施，而平台方的现有审核机制明显存在系统性漏洞。
+
+**🔧 核心技术**
+研究核心是GPTRACKER框架，该框架持续自动化采集GPT Store中的GPT条目并模拟用户交互以触发其真实行为。在识别层面，采用LLM驱动的自动评分系统配合人工复核，将GPT分类到十类违规场景，兼顾效率与准确性。在分析层面，结合静态分析（系统提示、描述文本）与动态分析（实际对话流程），揭示滥用GPT的运作机制，包括通过外部API调用、描述文字掩护意图、URL重定向等规避审核的手法。通过对接VirusTotal，进一步识别出GPT中嵌入的恶意域名，实现从功能滥用到基础设施层面的关联分析。整体上构成了一套从采集、分类、行为分析到恶意基础设施溯源的完整测量流水线。
+
+**📝 评价**
+本文作为该领域首个大规模实证测量研究，数据规模可观（75万+ GPT、8个月持续监测），具有较强的时效性与覆盖度。最突出的贡献在于将滥用分析从静态文本检测延伸到动态交互行为，并定量揭示了外部API集成对有害内容成功率的显著提升（+22.81%），这一发现对平台审核机制设计有直接指导价值。然而，仅基于摘要可观察到若干局限：十类违规场景的划分标准与LLM评分系统的误报率/召回率未在摘要中披露，方法论的严谨性存疑；动态分析中的对话探针设计可能存在覆盖不完全的问题，部分对抗性GPT可能在特定触发条件下才暴露违规行为；此外，研究时间窗口内OpenAI审核策略本身也在变化，横向比较结论的稳定性有待验证。负责任披露后1316/1804的下架率（约73%）虽值得肯定，但也说明平台仍存在相当比例的漏网问题，文章对此的根因归因深度有限。
+
+---
+
+### 77. Make a Feint to the East While Attacking in the West: Blinding LLM-Based Code Auditors with Flashboom Attacks
+
+- **会议/年份**: SP 2025
+- **作者**: Xiao Li 0082, Yue Li 0002, Hao Wu 0067, Yue Zhang 0025, Kaidi Xu, Xiuzhen Cheng 等
+- **类别**: attack
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ✅ 是 — https://github.com/oxygen-hunter/Flashboom
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00125) · [代码](https://github.com/oxygen-hunter/Flashboom) · [DBLP](https://dblp.org/rec/conf/sp/LiLWZX00X25)
+- **置信度**: 0.78
+
+**🎯 目标问题**
+本文针对以 LLM 为核心的代码漏洞审计系统（如 GitHub Copilot）提出攻击方法。威胁模型假设攻击者（如恶意代码提交者）可向待审计代码库中注入精心构造的"诱饵"代码片段，通过劫持模型注意力机制使其忽视真实漏洞。这一场景在供应链安全、代码审查自动化高度依赖 LLM 的背景下极具现实威胁意义。若 LLM 审计器被盲化，攻击者可绕过自动安全门控，将漏洞隐藏在看似无害的大型代码库中。
+
+**🔧 核心技术**
+核心思路是利用 LLM 注意力机制的可操控性：向被审计代码中注入"高注意力代码片段"（High-Attention Code Snippets），使模型将有限的注意力资源集中在无害的诱饵函数上，从而"绕开"真实漏洞所在位置。作者提出自动化系统 Crazy-Ivan，可自动识别并无缝整合这类高注意力片段，通过函数级别的优先排序与迭代精化，系统性地优化"盲化"效果，最终生成可部署的 Flashboom 对抗样本。该方法具备跨模型可迁移性，并声称适用于多种编程语言。
+
+**📝 评价**
+创新点在于将注意力机制本身作为攻击面，切入角度新颖，"声东击西"的隐喻也契合实际攻击逻辑。实验数据在量化指标上较为充分，CodeLlama 上 96.3%、Gemma 上 83.05% 的盲化成功率以及跨模型可迁移性值得关注。GitHub Copilot 区块链漏洞案例研究增强了工业界相关性。然而，仅凭摘要无法判断关键实验细节：（1）Crazy-Ivan 识别"高注意力"片段是否依赖白盒访问（注意力权重），若如此则对黑盒场景适用性存疑；（2）注入代码如何保证语法正确性及不引入新漏洞，未在摘要中说明；（3）攻击成功率的基线选择及漏洞类型分布未披露，存在选样偏差风险；（4）防御侧几乎未涉及，论文对防御方的贡献较有限。
+
+---
+
+### 78. BAIT: Large Language Model Backdoor Scanning by Inverting Attack Target
+
+- **会议/年份**: SP 2025
+- **作者**: Guangyu Shen, Siyuan Cheng 0005, Zhuo Zhang 0002, Guanhong Tao 0001, Kaiyuan Zhang 0002, Hanxi Guo 等
+- **类别**: defense
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00103) · [DBLP](https://dblp.org/rec/conf/sp/Shen0000GY0AM025)
+- **置信度**: 0.78
+
+**🎯 目标问题**
+大型语言模型（LLM）面临后门攻击威胁：攻击者在训练阶段植入隐蔽触发序列，使模型在推理时遇到触发词后输出特定恶意目标序列。与判别式NLP模型不同，LLM的输出空间随响应长度指数级增长，使传统的触发词逆向（trigger inversion）检测方法面临搜索空间爆炸问题。在模型部署前缺乏有效的后门扫描手段，直接威胁到LLM供应链安全。
+
+**🔧 核心技术**
+BAIT的核心创新在于将检测对象从「触发词逆向」转换为「目标序列逆向（target inversion）」。理论层面，作者对因果语言模型的自回归训练范式进行分析，证明后门目标序列中各token之间存在异常强的因果关联性，这一特性区别于正常模型输出。实践层面，BAIT通过基于搜索的方式寻找能够使模型输出具有高度token因果强度的序列，以此判断模型是否被植入后门，而无需任何关于触发词或目标序列的先验知识。该方法仅需黑盒访问权限（仅依赖模型输出），大幅压缩了搜索空间，并在理论上对多种攻击类型具有通用性。
+
+**📝 评价**
+最大亮点是将问题视角从难以枚举的触发词空间转向结构性更强的目标序列，理论动机清晰，这是一个有实质意义的重新建模。实验规模较为可观（153个LLM、8种架构、6类攻击、对比5条基线），且在TrojAI竞赛中排名第一，具有较强的外部验证背书。然而，论文基于「特定假设」进行理论分析，这些假设的普适性未知——若攻击者特意降低目标token间的因果关联强度（即对抗性目标设计），BAIT是否仍然有效值得存疑。黑盒访问在实际部署中是合理假设，但也意味着检测精度受限于输出采样，对于输出极度受限的API可能失效。此外，仅凭摘要无法判断误报率（FPR）的具体数值，而扫描工具的误报代价在实际应用中至关重要。
+
+---
+
+### 79. Fuzz-Testing Meets LLM-Based Agents: An Automated and Efficient Framework for Jailbreaking Text-to-Image Generation Models
+
+- **会议/年份**: SP 2025
+- **作者**: Yingkai Dong, Xiangtao Meng, Ning Yu 0006, Zheng Li 0023, Shanqing Guo
+- **类别**: attack
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ✅ 是 — https://github.com/YingkaiD/JailFuzzer
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00119) · [代码](https://github.com/YingkaiD/JailFuzzer) · [DBLP](https://dblp.org/rec/conf/sp/DongM00G25)
+- **置信度**: 0.72
+
+**🎯 目标问题**
+文本生成图像（T2I）模型（如Stable Diffusion、DALL-E等）的越狱攻击问题。现有攻击方法存在四大局限：依赖白盒或灰盒访问、生成的提示语义不自然易被检测、搜索空间受限、以及对目标系统查询次数过多。本文威胁模型为纯黑盒设置，攻击者仅能通过API调用观察模型输出，目标是绕过T2I模型内置的安全过滤机制，生成含有暴力、色情等不安全内容的图像，这一问题因T2I模型的广泛商业部署而具有重要的现实安全意义。
+
+**🔧 核心技术**
+JailFuzzer将软件安全领域的模糊测试（fuzzing）范式移植到LLM越狱场景，由三个核心组件构成：（1）种子池（Seed Pool），存储初始提示及已成功的越狱提示，作为变异起点；（2）LLM Agent驱动的引导变异引擎（Guided Mutation Engine），以LLM为后端对种子提示进行语义有意义的变异，生成自然流畅的候选越狱提示，区别于基于梯度或随机字符扰动的传统方法；（3）LLM Agent实现的Oracle函数，自动评估生成图像是否成功绕过安全机制（即判定越狱是否成功），从而形成反馈驱动的迭代循环。整体框架在纯黑盒条件下运行，通过LLM的语言理解能力压缩搜索空间、提升查询效率。
+
+**📝 评价**
+创新性层面，将fuzz testing的种子-变异-oracle范式与LLM Agent结合用于T2I越狱具有一定新颖性，特别是将LLM同时用于变异和评估两个环节，避免了人工设计变异规则的局限。然而，方法的核心依赖是一个强力的后端LLM（如GPT-4），这意味着攻击本身的成本和可用性受制于调用该LLM的访问条件，论文似乎未充分讨论'攻击者需要访问高质量LLM'这一前提假设是否构成实际限制。实验声称在'所有关键指标'上超越现有方法，但仅凭摘要无法评估对比基线的完整性、使用的目标T2I模型种类、以及在商业API（如DALL-E 3、Midjourney）上的实际成功率。Oracle函数由LLM实现这一设计存在潜在的误判问题——LLM判断图像是否'不安全'的可靠性尚存疑，且若目标模型未来引入对抗变异提示的防御，该框架的泛化能力未经验证。论文开源是重要加分项，有利于社区复现与评估，但也意味着攻击工具直接可被滥用，论文对此伦理风险的讨论深度有待检验。
+
+---
+
+### 80. Codebreaker: Dynamic Extraction Attacks on Code Language Models
+
+- **会议/年份**: SP 2025
+- **作者**: Changzhou Han, Zehang Deng, Wanlun Ma, Xiaogang Zhu 0001, Minhui Xue 0001, Tianqing Zhu 等
+- **类别**: attack
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00124) · [DBLP](https://dblp.org/rec/conf/sp/HanDM00ZW025)
+- **置信度**: 0.72
+
+**🎯 目标问题**
+本文针对基于LLM的代码助手（CodeLLMs）中训练数据提取攻击问题，威胁模型为攻击者通过构造提示词诱导模型输出训练集中包含的个人隐私信息（PI，如邮箱、API密钥、用户名等）。现有手动或半自动方法提取量有限，导致对训练数据泄露规模的严重低估。该问题在代码LLM广泛部署背景下尤为关键，因代码仓库（如GitHub）中常含大量敏感凭证与个人信息，一旦被记忆则面临规模化隐私泄露风险。
+
+**🔧 核心技术**
+Codebreaker框架由两个核心组件构成：①语义熵（Semantic Entropy）机制，用于评估给定提示词触发模型输出训练数据的可能性，通过量化模型响应的语义不确定性筛选高质量攻击提示；②自动动态变异机制（Dynamic Mutation），与框架无缝集成，在迭代过程中持续改进提示词，并显式建模单条响应中不同PI元素（如姓名、邮箱、仓库路径）之间的关联关系，以提升联合提取效果。两个组件协同工作，强化模型记忆激活并提升推理多样性，实现全自动、迭代式的PI提取攻击，无需人工干预。
+
+**📝 评价**
+论文创新点较为实质：将语义熵引入提示词质量评估是一个有价值的设计，将不确定性量化与攻击效果直接挂钩具有合理的理论动机。动态变异机制将单次响应内多PI元素的关联性显式建模，区别于以往独立提取各PI字段的思路，方向有新意。实验覆盖面较广，涵盖6个开源CodeLLM系列及2个商业系统，且相较SOTA提升幅度（平均21.79%）看起来显著。但仅凭摘要无法判断基线选取是否公平、评估指标（如精确匹配率与模糊匹配）定义是否严格；PI类型的覆盖范围和数据集构成也不透明，可能存在选择性汇报。此外，论文仅简略提及防御讨论，缺乏对抗性防御下的攻击鲁棒性实验，实用价值的边界尚不清晰。开源CodeLLMs与商业系统之间的结果差异未在摘要中详细拆分，对实际风险的量化说服力有待全文验证。
+
+---
+
+### 81. On the (In)Security of LLM App Stores
+
+- **会议/年份**: SP 2025
+- **作者**: Xinyi Hou, Yanjie Zhao 0001, Haoyu Wang 0001
+- **类别**: benchmark/measurement
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00117) · [DBLP](https://dblp.org/rec/conf/sp/HouZW25)
+- **置信度**: 0.72
+
+**🎯 目标问题**
+本文针对LLM应用商店生态的安全风险展开大规模测量研究，威胁模型分三层：（1）滥用潜力层——误导性描述与违规收集用户隐私；（2）恶意意图层——助力恶意软件生成、网络钓鱼等攻击活动；（3）后门层——内嵌隐蔽有害行为的LLM应用。随着GPT Store等平台累积数十万自定义应用，普通用户几乎无法识别这些潜在风险，平台监管机制的缺失使得有害内容与恶意功能可规模化扩散，威胁严峻且此前缺乏系统性量化分析。
+
+**🔧 核心技术**
+研究从六大主流平台（GPT Store、FlowGPT、Poe、Coze、Cici、Character.AI）历时五个月采集786,036个LLM应用，构建迄今最大规模的LLM应用安全数据集。检测层面采用静态分析（解析应用描述与隐私政策文本）与动态分析（主动与应用交互以诱发有害输出）相结合的互补策略。有害内容检测器基于LLM实现并引入"自优化"机制，同时辅以基于规则的模式匹配以降低漏报。核心资产之一是自建的ToxicDict毒性词典，含31,783条词条，覆盖仇恨言论、极端主义、自我伤害等多类别。研究结论已向OpenAI、Quora等平台反馈，形成闭环验证。
+
+**📝 评价**
+本文最大亮点是规模——近80万应用、五个月持续采集、六大平台覆盖，兼具广度与纵向深度，是目前LLM应用商店安全领域最大规模的实证研究之一，实际推动了1,643个问题应用下架，具有显著现实影响力。三层关注框架在概念组织上清晰，有助于后续分类研究。然而批判性地看，仅凭摘要无法评估"自优化LLM检测器"的具体机制、迭代策略及其假阳性/假阴性率，这是核心方法的黑箱。ToxicDict的构建方法与覆盖完整性同样缺乏说明——词典规模固然可观，但面对语义绕过、多语言混淆等对抗手法的鲁棒性存疑。后门检测（第三层）在摘要中几乎未涉及具体方法，与前两层明显失衡，可能只是初步探索而非完整贡献。此外，动态分析的提示设计与应用交互策略未披露，可重复性有待商榷。
+
+---
+
+### 82. Modifier Unlocked: Jailbreaking Text-to-Image Models Through Prompts
+
+- **会议/年份**: SP 2025
+- **作者**: Shuofeng Liu, Mengyao Ma, Minhui Xue 0001, Guangdong Bai
+- **类别**: attack
+- **分析依据**: 📃 仅摘要
+- **是否开源**: ❓ 未知
+- **链接**: [官方链接](https://doi.org/10.1109/SP61157.2025.00242) · [DBLP](https://dblp.org/rec/conf/sp/LiuM0B25)
+- **置信度**: 0.72
+
+**🎯 目标问题**
+文本到图像生成模型（T2I）内置的安全过滤器存在绕过漏洞，攻击者可通过精心构造的提示词生成NSFW（不适宜工作场所）内容。现有越狱攻击方法效果有限，而T2I模型被广泛部署于消费级产品中，一旦安全机制被绕过，极易被用于生成色情、暴力或其他有害图像，危害显著。本文聚焦于如何利用'风格修饰词'系统性地规避内容过滤，填补该特定攻击面的研究空白。
+
+**🔧 核心技术**
+MODX提出了一种基于'修饰词'（modifier）的越狱框架，核心思路是：通过改变艺术风格或流派（如水彩、素描、特定历史画风等）来间接引入不安全元素，而非直接使用被过滤词汇。框架采用启发式搜索算法，配合两个启发式函数（约束条件）来筛选和评估候选修饰词——这两个约束分别用于衡量修饰词诱导NSFW内容的能力以及规避过滤器的能力。理论上，论文从滤波器对风格化内容判断盲区的角度对该攻击路径进行了形式化可行性分析。实验在四个主流T2I模型上验证了MODX相较现有方法的优越性，并进一步测试了跨NSFW类别和跨模型版本的泛化能力。
+
+**📝 评价**
+该工作的创新点在于将'艺术风格修饰'作为攻击载体，视角较新颖——利用过滤器对风格化内容的语义理解盲区是一个有实际意义的攻击面。提供理论可行性分析是加分项，但仅凭摘要无法判断该分析的严谨性（是否基于形式化模型还是定性论证）。实验覆盖四个SOTA模型及多NSFW类别，横向对比充分，泛化性评估增强了结论可信度。主要局限在于：其一，'启发式函数'的设计细节不透明，两个约束函数如何量化NSFW诱导能力与过滤规避能力是方法成立的关键，摘要中完全未披露；其二，该攻击本质上是黑盒/灰盒攻击还是需要访问过滤器内部机制，摘要未明确，直接影响实际威胁模型的评估；其三，论文未提及防御对策或对模型方建议，攻击导向研究若缺乏防御视角，在安全社区的贡献完整性存疑；其四，NSFW类别的定义边界（色情/暴力/仇恨等）及各类别上的具体成功率数据未在摘要中呈现，难以判断攻击效果的实际危害量级。
+
+---
